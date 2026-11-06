@@ -51,9 +51,11 @@ context marks, so browsing changes and writing comments stay out of each other's
   composer **quote card**. Its size, wrapping, colours and remove control come entirely from
   the host's own quote style; the plugin adds no styling or configuration for it (the text is
   kept single-line so the host can render it compactly). Nothing is submitted automatically:
-  type your message, review the cards and press Enter / the Send button yourself. Removing a
-  card in the composer removes that comment from the panel; the panel's button
-  (`Add to composer`) only re-inserts missing cards.
+  type your message, review the cards and press Enter / the Send button yourself. Cards are
+  inserted once per comment when it is added (the host does not publish its quote list, so the
+  panel cannot observe card removals live); deleting a card is done in the composer itself,
+  and the panel's delete only clears the list entry (it reminds you to remove the card). The
+  panel button (`Add to composer`) inserts any comments that have no card yet.
 - **Light/dark and zh/en** — colors come from `--dsw-alias-*` theme tokens; the UI ships
   Simplified Chinese and English dictionaries.
 

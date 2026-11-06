@@ -1081,27 +1081,6 @@ function frQuoteTextForComment(comment) {
   return '`' + path + '#' + anchor + '`' + (text ? ' ' + text : '')
 }
 
-/** Parse one of our quote texts back into comment fields (null for foreign quotes). */
-function frParseQuoteComment(text) {
-  if (typeof text !== 'string' || !text) return null
-  const match = /^`([^`]+)#(\d+)(?::(\d+))?`\s?([\s\S]*)$/.exec(text)
-  if (!match) return null
-  const start = Number(match[2])
-  if (!isFinite(start) || start < 1) return null
-  const end = match[3] === undefined ? start : Math.max(start, Number(match[3]))
-  return {
-    path: match[1],
-    startLine: start,
-    endLine: isFinite(end) ? end : start,
-    text: typeof match[4] === 'string' ? match[4] : '',
-  }
-}
-
-/** Selector for the composer's atomic quote cards. */
-function frSelectQuotes(state) {
-  if (!state || typeof state !== 'object') return null
-  return Array.isArray(state.quotes) ? state.quotes : null
-}
 
 function frSelectDraft(state) {
   if (!state || typeof state !== 'object') return '';
@@ -1831,8 +1810,6 @@ function frCreateBody(api) {
     const cwd = typeof cwdValue === 'string' && cwdValue ? cwdValue : null;
     const draftValue = useInputFn(frSelectDraft);
     const draft = typeof draftValue === 'string' ? draftValue : '';
-    const quotesValue = useInputFn(frSelectQuotes);
-    const inputQuotes = Array.isArray(quotesValue) ? quotesValue : [];
 
     const initialState = frCacheEntry(tabKey);
 
@@ -1884,60 +1861,6 @@ function frCreateBody(api) {
       commentsRef.current = value;
       setCommentsState(value);
     }, []);
-
-    // Pending comments are represented by atomic quote cards in the chat composer.
-    // This effect keeps the two lists in sync: missing cards are inserted, cards removed
-    // in the composer (or dispatched with a send) drop their comments, and a persisted
-    // draft re-seeds the panel after a reload. The first sync only establishes a
-    // baseline, so a freshly mounted panel never prunes cached comments before inserting.
-    const quoteBaselineRef = React.useRef(null);
-    React.useEffect(function frSyncComposerQuotes() {
-      if (!sessionId) return;
-      const actions = inputActions;
-      if (!actions || typeof actions.insertQuote !== 'function') return;
-      const current = Array.isArray(commentsRef.current) ? commentsRef.current.slice() : [];
-      const quoteTexts = [];
-      inputQuotes.forEach(function frCollectQuote(quote) {
-        if (quote && typeof quote.text === 'string' && quote.text) quoteTexts.push(quote.text);
-      });
-      const present = {};
-      quoteTexts.forEach(function frMark(text) { present[text] = true; });
-      const baseline = quoteBaselineRef.current;
-
-      // Adopt cards persisted in the draft that the panel has not seen yet.
-      const known = {};
-      current.forEach(function frKnown(comment) { known[frQuoteTextForComment(comment)] = true; });
-      const adopted = [];
-      quoteTexts.forEach(function frAdopt(text) {
-        if (known[text]) return;
-        const parsed = frParseQuoteComment(text);
-        if (parsed) adopted.push(parsed);
-      });
-
-      // Cards that disappeared since the previous sync drop their comments. On the
-      // first sync only the persisted set is a baseline (nothing can be "removed" yet).
-      const nextComments = current.filter(function frKeepComment(comment) {
-        const text = frQuoteTextForComment(comment);
-        if (text === '') return true;
-        if (present[text]) return true;
-        if (baseline === null || !baseline[text]) return true;
-        return false;
-      }).concat(adopted);
-
-      // Comments with no card yet get one (appended at the composer caret/end).
-      const missing = nextComments.filter(function frMissing(comment) {
-        const text = frQuoteTextForComment(comment);
-        return text !== '' && !present[text];
-      });
-      missing.forEach(function frInsertMissing(comment) {
-        const text = frQuoteTextForComment(comment);
-        if (!text) return;
-        try { actions.insertQuote(text); } catch (err) { /* composer not ready */ }
-      });
-
-      if (nextComments.length !== current.length) setComments(nextComments);
-      quoteBaselineRef.current = present;
-    }, [sessionId, inputQuotes, inputActions, setComments]);
 
     const setOpenPath = React.useCallback(function frSetOpenPath(nextPath) {
       const value = typeof nextPath === 'string' && nextPath ? nextPath : null;
@@ -2099,6 +2022,23 @@ function frCreateBody(api) {
       setPopover(null);
     }, []);
 
+    // One-shot insertion of a pending comment as a native composer quote card. The host
+    // does not publish the quote list (InputState carries no `quotes` field), so this is a
+    // one-way push tracked per tab; re-insertion is deduplicated by the recorded text.
+    const insertCommentCard = React.useCallback(function frInsertCommentCard(comment) {
+      const actions = inputActions;
+      if (!actions || typeof actions.insertQuote !== 'function' || !comment) return false;
+      const quoteText = frQuoteTextForComment(comment);
+      if (!quoteText) return false;
+      const entry = frCacheEntry(tabKey);
+      if (!Array.isArray(entry.quotedTexts)) entry.quotedTexts = [];
+      if (entry.quotedTexts.indexOf(quoteText) >= 0) return false;
+      let inserted = false;
+      try { inserted = actions.insertQuote(quoteText) !== false; } catch (err) { inserted = false; }
+      if (inserted) entry.quotedTexts.push(quoteText);
+      return inserted;
+    }, [inputActions, tabKey]);
+
     const addComment = React.useCallback(function frAddComment(startLine, endLine, text) {
       if (!openPath) return null;
       const raw = typeof text === 'string' ? text.replace(/\r\n/g, '\n').replace(/\r/g, '\n') : '';
@@ -2136,15 +2076,25 @@ function frCreateBody(api) {
       };
       const current = Array.isArray(commentsRef.current) ? commentsRef.current : [];
       setComments(current.concat([comment]));
+      insertCommentCard(comment);
       return comment;
-    }, [openPath, setComments]);
+    }, [insertCommentCard, openPath, setComments]);
 
     const deleteComment = React.useCallback(function frDeleteComment(commentId) {
       if (typeof commentId !== 'string' || !commentId) return;
-      // Pending comments live in the composer as atomic quote cards; removing the card
-      // there is the supported removal path (the panel adopts it automatically).
-      showNotice('comment.deleteInComposer');
-    }, [showNotice]);
+      const current = Array.isArray(commentsRef.current) ? commentsRef.current : [];
+      const target = current.filter(function frSameComment(comment) { return comment && comment.id === commentId; })[0];
+      const remaining = current.filter(function frKeepComment(comment) { return comment && comment.id !== commentId; });
+      setComments(remaining);
+      if (target) {
+        const entry = frCacheEntry(tabKey);
+        if (Array.isArray(entry.quotedTexts)) {
+          const quoteText = frQuoteTextForComment(target);
+          entry.quotedTexts = entry.quotedTexts.filter(function frKeepText(text) { return text !== quoteText; });
+        }
+      }
+      showNotice('comment.removedHint');
+    }, [setComments, showNotice, tabKey]);
 
     const sendAll = React.useCallback(function frSendAll() {
       const current = Array.isArray(commentsRef.current) ? commentsRef.current.slice() : [];
@@ -2152,28 +2102,13 @@ function frCreateBody(api) {
         showNotice('send.none');
         return;
       }
-      const actions = inputActions;
-      if (!actions || typeof actions.insertQuote !== 'function') {
-        showNotice('send.failed');
-        return;
-      }
-      const present = {};
-      inputQuotes.forEach(function frExistingQuote(quote) {
-        if (quote && typeof quote.text === 'string') present[quote.text] = true;
-      });
       let inserted = 0;
-      let failed = 0;
       current.forEach(function frInsertOne(comment) {
-        const text = frQuoteTextForComment(comment);
-        if (!text || present[text]) return;
-        let ok = false;
-        try { ok = actions.insertQuote(text) !== false; } catch (err) { ok = false; }
-        if (ok) { present[text] = true; inserted += 1; } else { failed += 1; }
+        if (insertCommentCard(comment)) inserted += 1;
       });
       if (inserted > 0) showNotice('send.inserted', { count: inserted });
-      else if (failed > 0) showNotice('send.failed');
       else showNotice('send.inserted', { count: current.length });
-    }, [inputActions, inputQuotes, showNotice, tr]);
+    }, [insertCommentCard, showNotice]);
 
     React.useEffect(function frSyncSendAll() {
       sendAllRef.current = sendAll;
@@ -3294,6 +3229,7 @@ function frCreateBody(api) {
       'send.insert': '放入输入框',
       'send.inserted': '已把 {count} 条评论放入输入框',
       'comment.deleteInComposer': '请在输入框里删除这条评论卡片',
+      'comment.removedHint': '已从列表移除；输入框中的卡片请在输入框中删除',
       'error.generic': '操作失败',
       'error.outside': '路径不在工作区内',
       'error.notFound': '文件不存在',
@@ -3359,6 +3295,7 @@ function frCreateBody(api) {
       'send.insert': 'Add to composer',
       'send.inserted': 'Added {count} comments to the composer',
       'comment.deleteInComposer': 'Remove this comment card in the composer',
+      'comment.removedHint': 'Comment removed; delete its card in the composer',
       'error.generic': 'Something went wrong',
       'error.outside': 'Path outside the workspace',
       'error.notFound': 'File not found',
