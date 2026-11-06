@@ -11,10 +11,8 @@ Git 变更标记地阅读文件、对某一行或一个行区间写评论，然�
 ## 演示
 
 <p align="center">
-  <a href="docs/media/demo.mp4"><img src="docs/media/demo.gif" alt="在 Harness 右侧栏浏览文件、查看 Git 标记、评论并发送"></a>
+  <img src="docs/media/demo.gif" alt="在 Harness 右侧栏浏览文件、查看 Git 标记、评论并发送">
 </p>
-
-完整画质录像：[docs/media/demo.mp4](docs/media/demo.mp4)（GitHub 会用自带视频播放器打开）。
 
 ## 定位
 
