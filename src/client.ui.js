@@ -108,7 +108,8 @@ const FR_CSS = `
 .dfr-search-status{padding:5px 8px;font-size:11px;line-height:15px;color:var(--dsw-alias-label-secondary);white-space:normal;overflow-wrap:anywhere}
 .dfr-search-row{width:100%}
 .dfr-search-empty{padding:8px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}
-.dfr-comment-count{flex:none;width:30px;margin-left:4px;text-align:right;font-size:10px;line-height:14px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;overflow:hidden}
+.dfr-comment-count{flex:none;box-sizing:border-box;width:34px;margin-left:4px;padding:0 5px;text-align:center;font-size:11px;line-height:16px;font-weight:700;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:999px;font-variant-numeric:tabular-nums;overflow:hidden}
+.dfr-comment-count.is-empty{background:transparent;border-color:transparent;color:var(--dsw-alias-label-secondary)}
 .dfr-comment-nav{color:var(--dsw-alias-label-secondary)}
 .dfr-comment-nav-count{flex:none;min-width:34px;text-align:center;font-size:10px;line-height:14px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}
 @media (max-width:340px){.dfr-header{padding:5px 6px}.dfr-line-no{width:36px}.dfr-btn{padding:3px 5px}.dfr-tree-row{padding-right:6px}.dfr-popover,.dfr-card{margin-left:4px;margin-right:4px}}
@@ -1359,6 +1360,18 @@ const setComments = React.useCallback(function frSetComments(next) {
       }));
     }, [setComments]);
 
+    const deleteFileComments = React.useCallback(function frDeleteFileComments() {
+      if (!openPath) return;
+      const current = Array.isArray(commentsRef.current) ? commentsRef.current.slice() : [];
+      const remaining = current.filter(function frOtherFile(comment) {
+        return !comment || comment.path !== openPath;
+      });
+      const removed = current.length - remaining.length;
+      if (removed <= 0) return;
+      setComments(remaining);
+      showNotice('comment.cleared', { count: removed });
+    }, [openPath, setComments, showNotice]);
+
     const deleteAllComments = React.useCallback(function frDeleteAllComments() {
       const current = Array.isArray(commentsRef.current) ? commentsRef.current.slice() : [];
       if (!current.length) return;
@@ -2310,7 +2323,7 @@ const setComments = React.useCallback(function frSetComments(next) {
         },
           h('span', { className: 'dfr-tree-chevron' + (open ? ' dfr-tree-chevron-open' : '') }, frIcon('chevron', 12)),
           h('span', { className: 'dfr-tree-name' }, name),
-          h('span', { className: 'dfr-comment-count' }, dirCount > 0 ? String(dirCount) : '')
+          h('span', { className: 'dfr-comment-count' + (dirCount > 0 ? '' : ' is-empty') }, dirCount > 0 ? String(dirCount) : '')
         );
       }
       if (row.type === 'file') {
@@ -2329,7 +2342,7 @@ const setComments = React.useCallback(function frSetComments(next) {
           spacer,
           h('span', { className: 'dfr-tree-name' }, name),
           gitLetter ? h('span', { className: 'dfr-git-badge' }, gitLetter) : null,
-          h('span', { className: 'dfr-comment-count' }, count > 0 ? String(count) : '')
+          h('span', { className: 'dfr-comment-count' + (count > 0 ? '' : ' is-empty') }, count > 0 ? String(count) : '')
         );
       }
       return h('div', {
@@ -2407,7 +2420,9 @@ const setComments = React.useCallback(function frSetComments(next) {
             },
           },
             h('span', { className: 'dfr-tree-name' }, filePath),
-            letter ? h('span', { className: 'dfr-git-badge' }, letter) : null
+            letter ? h('span', { className: 'dfr-git-badge' }, letter) : null,
+            h('span', { className: 'dfr-comment-count' + ((countsByPath && countsByPath[fileAbs] ? countsByPath[fileAbs] : 0) > 0 ? '' : ' is-empty') },
+              countsByPath && countsByPath[fileAbs] ? String(countsByPath[fileAbs]) : '')
           ));
         });
       });
@@ -2445,6 +2460,7 @@ const setComments = React.useCallback(function frSetComments(next) {
       if (status === 'deleted') return null;
       const kind = status ? frSafeGitKind(status) : '';
       const letter = status ? frGitLetter(status) : '';
+      const searchCount = countsByPath && countsByPath[abs] ? countsByPath[abs] : 0;
       return h('button', {
         key: 'search-row-' + abs,
         type: 'button',
@@ -2453,7 +2469,8 @@ const setComments = React.useCallback(function frSetComments(next) {
         onClick: function frOpenSearchResult() { openFile(abs); },
       },
         h('span', { className: 'dfr-tree-name' }, rel),
-        letter ? h('span', { className: 'dfr-git-badge' }, letter) : null
+        letter ? h('span', { className: 'dfr-git-badge' }, letter) : null,
+        h('span', { className: 'dfr-comment-count' + (searchCount > 0 ? '' : ' is-empty') }, searchCount > 0 ? String(searchCount) : '')
       );
     }
 
@@ -2590,8 +2607,8 @@ const setComments = React.useCallback(function frSetComments(next) {
             disabled: navTotal === 0 || navIndex >= navTotal - 1,
             className: 'dfr-comment-nav',
           }),
-          frIconButton(tr('comment.deleteAll'), 'trash', function frDeleteAllFileClick() { deleteAllComments(); }, {
-            disabled: commentCount === 0,
+          frIconButton(tr('comment.deleteFile'), 'trash', function frDeleteAllFileClick() { deleteFileComments(); }, {
+            disabled: openComments.length === 0,
             className: 'dfr-danger',
           }),
           frIconButton(tr('file.reload'), 'refresh', function frReloadClick() { reloadFile(); }),
