@@ -47,6 +47,10 @@ context marks, so browsing changes and writing comments stay out of each other's
 - **Line comments** — double-click a line, or drag across lines to select a range, then
   type in the composer that opens below the selection. `Enter` turns it into an inline
   card; `Shift+Enter` adds a newline; `Esc` cancels.
+- **Jump between comments** — the file header shows the current position (`2/7`) with
+  previous/next buttons; `Ctrl/Cmd+Up/Down`, `Ctrl/Cmd+P/N` and `Ctrl/Cmd+wheel` jump too.
+  The tree shows a right-aligned comment count per file and, for folders, the aggregate of
+  everything below them.
 - **Send comments to the model** — `Ctrl/Cmd+Enter` in the comment box or the panel's send
   button submits the formatted list. Comments that are still pending are also **appended to
   any ordinary chat submit**: type your own message, press Enter (or Cmd/Ctrl+Enter / the

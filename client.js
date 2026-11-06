@@ -1001,6 +1001,9 @@ const FR_CSS = `
 .dfr-search-status{padding:5px 8px;font-size:11px;line-height:15px;color:var(--dsw-alias-label-secondary);white-space:normal;overflow-wrap:anywhere}
 .dfr-search-row{width:100%}
 .dfr-search-empty{padding:8px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}
+.dfr-comment-count{flex:none;width:30px;margin-left:4px;text-align:right;font-size:10px;line-height:14px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;overflow:hidden}
+.dfr-comment-nav{color:var(--dsw-alias-label-secondary)}
+.dfr-comment-nav-count{flex:none;min-width:34px;text-align:center;font-size:10px;line-height:14px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}
 @media (max-width:340px){.dfr-header{padding:5px 6px}.dfr-line-no{width:36px}.dfr-btn{padding:3px 5px}.dfr-tree-row{padding-right:6px}.dfr-popover,.dfr-card{margin-left:4px;margin-right:4px}}
 `;
 
@@ -1573,6 +1576,8 @@ const frIconPaths = {
   chevron: 'M6 4l4 4-4 4',
   refresh: 'M13 8a5 5 0 1 1-2-4.6 M13.5 2.6v3h-3',
   back: 'M10 3.5L5.5 8l4.5 4.5',
+  up: 'M4 10l4-4 4 4',
+  down: 'M4 6l4 4 4-4',
   send: 'M2.8 8L14 2.8 8.6 14l-1.7-4.6z',
   trash: 'M3.5 4.5h9 M6.2 4.5V2.8h3.6v1.7 M4.6 4.5l.6 8h4.6l.6-8',
 };
@@ -1990,6 +1995,7 @@ function frCreateBody(api) {
     const [popover, setPopover] = React.useState(null);
     const [notice, setNotice] = React.useState(null);
     const [reloadNonce, setReloadNonce] = React.useState(0);
+    const [commentNavIndex, setCommentNavIndex] = React.useState(0);
     const [gitStatus, setGitStatus] = React.useState(null);
     const [gitOnly, setGitOnly] = React.useState(function frInitGitOnly() {
       return initialState.gitOnly === true;
@@ -2042,6 +2048,7 @@ const setComments = React.useCallback(function frSetComments(next) {
       setPopover(null);
       dragRef.current = null;
       setSelection(null);
+      setCommentNavIndex(0);
       setFileState({ status: value ? 'loading' : 'idle', lines: [], error: null, truncated: false });
       setOpenPathState(value);
     }, []);
@@ -2782,6 +2789,116 @@ const sendAll = React.useCallback(function frSendAll() {
     // ---- derived data ------------------------------------------------------
 
     const commentList = Array.isArray(comments) ? comments : [];
+
+    // Comment counts per directory: each comment counts for every ancestor folder,
+    // so a collapsed folder still shows how many comments its subtree carries.
+    const dirCommentCounts = React.useMemo(function frDirCommentCounts() {
+      const map = {};
+      commentList.forEach(function frCountAncestors(comment) {
+        if (!comment || typeof comment.path !== 'string' || !comment.path) return;
+        let dir = frSafeDirName(comment.path);
+        let guard = 0;
+        while (dir && guard < 64) {
+          map[dir] = (map[dir] || 0) + 1;
+          const parent = frSafeDirName(dir);
+          if (parent === dir) break;
+          dir = parent;
+          guard += 1;
+        }
+      });
+      return map;
+    }, [commentList]);
+
+    const openCommentsSorted = React.useMemo(function frOpenCommentsSorted() {
+      const list = commentList.filter(function frSameFile(comment) {
+        return comment && comment.path === openPath;
+      });
+      try {
+        if (typeof frSortComments === 'function') return frSortComments(list);
+      } catch (err) { /* fall through */ }
+      return list.slice().sort(function frByLine(left, right) {
+        return (left && left.startLine ? left.startLine : 0) - (right && right.startLine ? right.startLine : 0);
+      });
+    }, [commentList, openPath]);
+
+    const navTotal = openCommentsSorted.length;
+    const navIndex = navTotal > 0 ? Math.min(commentNavIndex, navTotal - 1) : 0;
+
+    const jumpToComment = React.useCallback(function frJumpToComment(delta) {
+      if (navTotal <= 0 || !delta) return;
+      setCommentNavIndex(function frNextIndex(previous) {
+        const current = Math.max(0, Math.min(previous, navTotal - 1));
+        const next = Math.max(0, Math.min(current + delta, navTotal - 1));
+        const comment = openCommentsSorted[next];
+        if (comment) {
+          const line = typeof comment.endLine === 'number' && isFinite(comment.endLine)
+            ? Math.floor(comment.endLine)
+            : Math.floor(comment.startLine || 1);
+          const body = fileBodyRef.current;
+          if (body && typeof body.querySelector === 'function') {
+            const row = body.querySelector('[data-line="' + line + '"]');
+            if (row) {
+              const top = row.offsetTop - Math.max(0, body.clientHeight / 2 - row.offsetHeight / 2);
+              body.scrollTop = Math.max(0, top);
+            }
+          }
+        }
+        return next;
+      });
+    }, [navTotal, openCommentsSorted]);
+
+    React.useEffect(function frClampNavIndex() {
+      setCommentNavIndex(function frClamp(previous) {
+        const max = Math.max(0, navTotal - 1);
+        return previous > max ? max : previous;
+      });
+    }, [navTotal]);
+
+    // Ctrl/Cmd + Up/Down or Ctrl/Cmd + P/N jumps between comments in the file view.
+    React.useEffect(function frCommentNavKeys() {
+      if (!openPath || navTotal <= 0) return undefined;
+      function frOnKeyDown(event) {
+        try {
+          if (!event || event.defaultPrevented) return;
+          if (event.isComposing || event.shiftKey || event.altKey) return;
+          if (!event.ctrlKey && !event.metaKey) return;
+          let delta = 0;
+          if (event.key === 'ArrowUp' || event.key === 'p' || event.key === 'P') delta = -1;
+          else if (event.key === 'ArrowDown' || event.key === 'n' || event.key === 'N') delta = 1;
+          else return;
+          const target = event.target && event.target.nodeType === 1 ? event.target : null;
+          if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+          if (typeof event.preventDefault === 'function') event.preventDefault();
+          if (typeof event.stopPropagation === 'function') event.stopPropagation();
+          jumpToComment(delta);
+        } catch (err) { /* ignore */ }
+      }
+      try { window.addEventListener('keydown', frOnKeyDown, true); } catch (err) { return undefined; }
+      return function frRemoveCommentNavKeys() {
+        try { window.removeEventListener('keydown', frOnKeyDown, true); } catch (err) { /* ignore */ }
+      };
+    }, [openPath, navTotal, jumpToComment]);
+
+    // Ctrl/Cmd + wheel scrolls between comments as well.
+    React.useEffect(function frCommentNavWheel() {
+      if (!openPath || navTotal <= 0) return undefined;
+      const body = fileBodyRef.current;
+      if (!body || typeof body.addEventListener !== 'function') return undefined;
+      let lastAt = 0;
+      function frOnWheel(event) {
+        if (!event || !event.ctrlKey) return;
+        if (typeof event.preventDefault === 'function') event.preventDefault();
+        const now = Date.now();
+        if (now - lastAt < 260) return;
+        lastAt = now;
+        jumpToComment(event.deltaY > 0 ? 1 : -1);
+      }
+      try { body.addEventListener('wheel', frOnWheel, { passive: false }); } catch (err) { return undefined; }
+      return function frRemoveCommentNavWheel() {
+        try { body.removeEventListener('wheel', frOnWheel); } catch (err) { /* ignore */ }
+      };
+    }, [openPath, navTotal, jumpToComment, fileState.status]);
+
     const commentCount = commentList.length;
 
     // Syntax highlighting: computed once per file read, skipped above the core cap.
@@ -3067,6 +3184,7 @@ const sendAll = React.useCallback(function frSendAll() {
       if (row.type === 'directory') {
         const open = !!(expanded && expanded[rowPath]);
         const dirChanged = !!(gitDirCounts && gitDirCounts[rowPath]);
+        const dirCount = dirCommentCounts && dirCommentCounts[rowPath] ? dirCommentCounts[rowPath] : 0;
         return h('button', {
           key: key,
           type: 'button',
@@ -3077,7 +3195,8 @@ const sendAll = React.useCallback(function frSendAll() {
           onClick: function frToggleDirClick() { toggleDir(rowPath); },
         },
           h('span', { className: 'dfr-tree-chevron' + (open ? ' dfr-tree-chevron-open' : '') }, frIcon('chevron', 12)),
-          h('span', { className: 'dfr-tree-name' }, name)
+          h('span', { className: 'dfr-tree-name' }, name),
+          h('span', { className: 'dfr-comment-count' }, dirCount > 0 ? String(dirCount) : '')
         );
       }
       if (row.type === 'file') {
@@ -3096,7 +3215,7 @@ const sendAll = React.useCallback(function frSendAll() {
           spacer,
           h('span', { className: 'dfr-tree-name' }, name),
           gitLetter ? h('span', { className: 'dfr-git-badge' }, gitLetter) : null,
-          count > 0 ? h('span', { className: 'dfr-tree-badge' }, String(count)) : null
+          h('span', { className: 'dfr-comment-count' }, count > 0 ? String(count) : '')
         );
       }
       return h('div', {
@@ -3337,6 +3456,18 @@ const sendAll = React.useCallback(function frSendAll() {
           )
         ),
         h('div', { className: 'dfr-header-actions' },
+          navTotal > 0
+            ? h('span', { className: 'dfr-comment-nav-count', title: tr('comment.count', { count: navTotal }) },
+                tr('comment.position', { index: navIndex + 1, total: navTotal }))
+            : null,
+          frIconButton(tr('comment.prev'), 'up', function frPrevCommentClick() { jumpToComment(-1); }, {
+            disabled: navTotal === 0 || navIndex <= 0,
+            className: 'dfr-comment-nav',
+          }),
+          frIconButton(tr('comment.next'), 'down', function frNextCommentClick() { jumpToComment(1); }, {
+            disabled: navTotal === 0 || navIndex >= navTotal - 1,
+            className: 'dfr-comment-nav',
+          }),
           frIconButton(tr('file.reload'), 'refresh', function frReloadClick() { reloadFile(); }),
           sendButton()
         )
@@ -3392,6 +3523,9 @@ const sendAll = React.useCallback(function frSendAll() {
       'comment.none': '还没有评论',
       'comment.line': '第 {line} 行',
       'comment.range': '第 {start}-{end} 行',
+      'comment.prev': '上一条评论',
+      'comment.next': '下一条评论',
+      'comment.position': '{index}/{total}',
       'send.button': '发送',
       'send.sendAll': '发送全部',
       'send.none': '没有可发送的评论',
@@ -3454,6 +3588,9 @@ const sendAll = React.useCallback(function frSendAll() {
       'comment.none': 'No comments yet',
       'comment.line': 'Line {line}',
       'comment.range': 'Lines {start}-{end}',
+      'comment.prev': 'Previous comment',
+      'comment.next': 'Next comment',
+      'comment.position': '{index}/{total}',
       'send.button': 'Send',
       'send.sendAll': 'Send all',
       'send.none': 'Nothing to send',
