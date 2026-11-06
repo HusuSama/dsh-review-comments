@@ -1,0 +1,67 @@
+{
+  "name": "dsh-review-comments",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness right-sidebar file review: browse, search and preview workspace files, comment on lines or selections, and send every comment to the model as a path#line list.",
+  "type": "module",
+  "license": "MIT",
+  "author": "dsh-file-comments contributors",
+  "homepage": "https://github.com/HusuSama/dsh-review-comments#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HusuSama/dsh-review-comments.git"
+  },
+  "bugs": {
+    "url": "https://github.com/HusuSama/dsh-review-comments/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "cordis",
+    "file-review",
+    "code-review",
+    "comments",
+    "git",
+    "right-sidebar",
+    "web-ui"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "icon.svg",
+    "locale/*.json",
+    "src/*.js",
+    "build.mjs",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-api-workspace-files"
+      ]
+    }
+  }
+}

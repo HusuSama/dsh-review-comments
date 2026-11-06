@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "File Comments",
+    "description": "Right-sidebar file review for DeepSeek Harness: browse, search and preview workspace files with syntax highlighting and git status, comment on lines or selections, and send every comment to the model as a path#line list."
+  }
+}

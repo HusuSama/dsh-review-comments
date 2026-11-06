@@ -1,0 +1,10 @@
+# Runtime artifacts
+.status/
+node_modules/
+
+# Internal design/verification notes (not part of the published plugin)
+docs/
+
+# Local noise
+*.log
+.DS_Store
