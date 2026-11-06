@@ -56,10 +56,6 @@
       'search.truncated': '结果过多，已截断',
       'search.scanned': '已扫描 {dirs} 个目录',
       'search.hint': '搜索会跳过 .git、node_modules 等目录',
-      'send.insert': '放入输入框',
-      'send.inserted': '已把 {count} 条评论放入输入框',
-      'comment.deleteInComposer': '请在输入框里删除这条评论卡片',
-      'comment.removedHint': '已从列表移除；输入框中的卡片请在输入框中删除',
       'error.generic': '操作失败',
       'error.outside': '路径不在工作区内',
       'error.notFound': '文件不存在',
@@ -122,10 +118,6 @@
       'search.truncated': 'Too many results; showing a subset',
       'search.scanned': 'Scanned {dirs} folders',
       'search.hint': 'Skips .git, node_modules and similar folders',
-      'send.insert': 'Add to composer',
-      'send.inserted': 'Added {count} comments to the composer',
-      'comment.deleteInComposer': 'Remove this comment card in the composer',
-      'comment.removedHint': 'Comment removed; delete its card in the composer',
       'error.generic': 'Something went wrong',
       'error.outside': 'Path outside the workspace',
       'error.notFound': 'File not found',
@@ -255,6 +247,24 @@
             ),
           ),
         'file-review: tab body',
+      )
+
+      // Invisible bridge above the composer: while review comments are pending, a normal
+      // send appends them below the user's text (blank line separated) and submits.
+      ctx.effect(
+        () =>
+          ctx.slots.inject('conversation.input.dock', () =>
+            ctx.slots.register(
+              {
+                name: 'conversation.input.dock',
+                id: 'file-review-comment-bridge',
+                order: 90,
+                locale: FR_NS,
+              },
+              FrCommentBridge,
+            ),
+          ),
+        'file-review: composer bridge',
       )
 
       ctx.effect(

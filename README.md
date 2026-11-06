@@ -47,15 +47,11 @@ context marks, so browsing changes and writing comments stay out of each other's
 - **Line comments** — double-click a line, or drag across lines to select a range, then
   type in the composer that opens below the selection. `Enter` turns it into an inline
   card; `Shift+Enter` adds a newline; `Esc` cancels.
-- **Comments live in the chat composer** — every pending comment is inserted as a native
-  composer **quote card**. Its size, wrapping, colours and remove control come entirely from
-  the host's own quote style; the plugin adds no styling or configuration for it (the text is
-  kept single-line so the host can render it compactly). Nothing is submitted automatically:
-  type your message, review the cards and press Enter / the Send button yourself. Cards are
-  inserted once per comment when it is added (the host does not publish its quote list, so the
-  panel cannot observe card removals live); deleting a card is done in the composer itself,
-  and the panel's delete only clears the list entry (it reminds you to remove the card). The
-  panel button (`Add to composer`) inserts any comments that have no card yet.
+- **Send comments to the model** — `Ctrl/Cmd+Enter` in the comment box or the panel's send
+  button submits the formatted list. Comments that are still pending are also **appended to
+  any ordinary chat submit**: type your own message, press Enter (or Cmd/Ctrl+Enter / the
+  Send button) in the chat composer, and the message goes out as your text, one blank line,
+  then the comment list — the comment cards stay in the panel until that send is accepted.
 - **Light/dark and zh/en** — colors come from `--dsw-alias-*` theme tokens; the UI ships
   Simplified Chinese and English dictionaries.
 
@@ -121,29 +117,26 @@ guide.
 | Drag across lines | file view | select a line range; composer opens below the selection; the range stays highlighted while you type |
 | `Enter` | composer | add the comment card at that place |
 | `Shift+Enter` | composer | newline inside the comment |
-| `Ctrl/Cmd+Enter` | comment box | add the comment; it appears as a quote card in the chat composer |
-| Add to composer | file header | re-insert any comment cards missing from the composer |
-| Enter / Cmd+Enter / Send | chat composer | your message plus the pending comment cards, sent by you — nothing is submitted automatically |
+| `Ctrl/Cmd+Enter` | comment box / header send button | send all pending comments to the model |
+| Enter / Cmd+Enter / Send | chat composer | if comments are pending: your text, one blank line, then the comment list — sent as one message |
 | `Esc` | composer | cancel |
 | Delete button on a card | comment card | remove that comment |
 
-Comments are cached per sidebar tab and mirrored as quote cards in the chat composer: the
-cards survive session switching and reloads with the draft. Sending the message clears them;
-removing a card removes the comment.
+Comments are cached per sidebar tab, so switching tabs and coming back keeps them; send or
+delete them to clean up.
 
 ### What the model receives
 
-Each comment card is a native composer quote, so the host serializes it as Markdown
-**blockquote** content in the message you send — your own text plus one blockquote line per
-comment, absolute path and `#startLine` (or `#startLine:endLine`) followed by the comment
-text. No source excerpts: the model can read the file at those lines itself.
+A single user message with an intro line and one ordered-list item per comment — absolute
+path plus `#startLine` (or `#startLine:endLine`), then the comment text. No source excerpts:
+the model can read the file at those lines itself.
 
 ```markdown
-请按下面这些评论逐条处理
+我在文件中留了 3 条评审评论，请按文件与行号逐条处理。
 
-> `/Users/me/proj/README.md#5` 标题需要说明用途
-> `/Users/me/proj/src/client/index.ts#12` 这里没有处理 null 情况
-> `/Users/me/proj/src/client/index.ts#20:24` 这段逻辑可以提取为函数
+1. `/Users/me/proj/README.md#5` 标题需要说明用途
+2. `/Users/me/proj/src/client/index.ts#12` 这里没有处理 null 情况
+3. `/Users/me/proj/src/client/index.ts#20:24` 这段逻辑可以提取为函数
 ```
 
 The message follows the active UI language (Chinese above); items are ordered by path and

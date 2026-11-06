@@ -1066,22 +1066,6 @@ function frSelectCwd(sessionId) {
   };
 }
 
-/** The single-line text a pending comment contributes to the composer as a quote card. */
-function frQuoteTextForComment(comment) {
-  if (!comment || typeof comment !== 'object') return ''
-  const path = typeof comment.path === 'string' ? comment.path : ''
-  const start = typeof comment.startLine === 'number' && isFinite(comment.startLine) ? Math.max(1, Math.floor(comment.startLine)) : 1
-  const endRaw = typeof comment.endLine === 'number' && isFinite(comment.endLine) ? Math.floor(comment.endLine) : start
-  const end = Math.max(start, endRaw)
-  const anchor = end === start ? String(start) : start + ':' + end
-  const text = typeof comment.text === 'string'
-    ? comment.text.replace(/\r/g, '').replace(/\s*\n\s*/g, ' ').trim()
-    : ''
-  if (!path) return ''
-  return '`' + path + '#' + anchor + '`' + (text ? ' ' + text : '')
-}
-
-
 function frSelectDraft(state) {
   if (!state || typeof state !== 'object') return '';
   return typeof state.draft === 'string' ? state.draft : '';
@@ -1781,6 +1765,181 @@ function frCommentPopover(props) {
 
 
 // ---------------------------------------------------------------------------
+// Pending-comment bus + composer bridge.
+//
+// Comments live in the review tab's React state, but a normal send happens in the
+// chat composer, which exposes no hook for rewriting a submission. The bridge
+// therefore captures the composer's send gesture (Enter / Cmd-Ctrl+Enter / the Send
+// button) while comments are pending, appends the formatted comment list below the
+// user's text with one blank line, and submits through the same public
+// inputActions face the composer uses.
+// ---------------------------------------------------------------------------
+const frCommentBus = new Map();
+
+function frCommentBusEntry(sessionId) {
+  const key = String(sessionId || '');
+  let entry = frCommentBus.get(key);
+  if (!entry) {
+    entry = { comments: [], listeners: new Set() };
+    frCommentBus.set(key, entry);
+  }
+  return entry;
+}
+
+/** Publish the pending comments of one session; listeners are notified on change. */
+function frPublishComments(sessionId, comments) {
+  if (!sessionId) return;
+  const entry = frCommentBusEntry(sessionId);
+  const next = Array.isArray(comments) ? comments.slice() : [];
+  const previous = entry.comments;
+  const same = previous.length === next.length && previous.every(function frSameComment(comment, index) {
+    return comment && next[index] && comment.id === next[index].id && comment.text === next[index].text;
+  });
+  if (same) return;
+  entry.comments = next;
+  entry.listeners.forEach(function frNotify(listener) {
+    try { listener(next.slice()); } catch (err) { /* ignore */ }
+  });
+}
+
+/** Read one session's pending comments. */
+function frReadPendingComments(sessionId) {
+  const entry = sessionId ? frCommentBus.get(String(sessionId)) : null;
+  return entry && Array.isArray(entry.comments) ? entry.comments.slice() : [];
+}
+
+/** Subscribe to one session's pending comments; delivers the current value immediately. */
+function frSubscribeComments(sessionId, listener) {
+  if (!sessionId || typeof listener !== 'function') return function frNoCommentSubscription() {};
+  const entry = frCommentBusEntry(sessionId);
+  entry.listeners.add(listener);
+  if (entry.comments.length > 0) {
+    try { listener(entry.comments.slice()); } catch (err) { /* ignore */ }
+  }
+  return function frUnsubscribeComments() {
+    entry.listeners.delete(listener);
+  };
+}
+
+/** Best-effort recognisers for the composer's Send controls across locales. */
+const frBridgeSendLabel = /(\bsend\b|发送|queue message|steer message)/i;
+
+/**
+ * Invisible composer bridge: renders nothing, registers capture-phase listeners and
+ * rewrites the draft right before the composer submits it.
+ * @param props - framework Session props (`sessionId`, `useInput`, `inputActions`, `t`).
+ * @returns null.
+ */
+function FrCommentBridge(props) {
+  const safe = props && typeof props === 'object' ? props : {};
+  const sessionId = typeof safe.sessionId === 'string' ? safe.sessionId : '';
+  const tr = typeof safe.t === 'function' ? safe.t : frTranslate;
+  const actions = safe.inputActions && typeof safe.inputActions === 'object' ? safe.inputActions : null;
+  const useInputFn = typeof safe.useInput === 'function' ? safe.useInput : frUseNoInput;
+  const draftValue = useInputFn(frSelectDraft);
+  const draftRef = React.useRef(typeof draftValue === 'string' ? draftValue : '');
+  draftRef.current = typeof draftValue === 'string' ? draftValue : '';
+  const pendingRef = React.useRef(frReadPendingComments(sessionId));
+  const sendingRef = React.useRef(false);
+
+  React.useEffect(function frBridgeSubscribeComments() {
+    if (!sessionId) return undefined;
+    pendingRef.current = frReadPendingComments(sessionId);
+    return frSubscribeComments(sessionId, function frPendingChanged(next) {
+      pendingRef.current = Array.isArray(next) ? next.slice() : [];
+    });
+  }, [sessionId]);
+
+  React.useEffect(function frBridgeInstallListeners() {
+    if (!sessionId || !actions || typeof actions.setDraft !== 'function' || typeof actions.submit !== 'function') return undefined;
+
+    function frTargetElement(event) {
+      const target = event && event.target ? event.target : null;
+      if (!target) return null;
+      if (target.nodeType === 1) return target;
+      return target.parentElement && target.parentElement.nodeType === 1 ? target.parentElement : null;
+    }
+
+    function frHandleGesture(event) {
+      if (!event || sendingRef.current) return;
+      const pending = pendingRef.current;
+      if (!Array.isArray(pending) || pending.length === 0) return;
+      const element = frTargetElement(event);
+      if (!element) return;
+      if (typeof element.closest === 'function' && element.closest('.dfr-root')) return;
+
+      let isSendGesture = false;
+      if (event.type === 'keydown') {
+        if (event.isComposing || event.repeat || event.shiftKey || event.altKey) return;
+        if (event.key !== 'Enter') return;
+        if (!element.isContentEditable) return;
+        isSendGesture = true;
+      } else if (event.type === 'click') {
+        const button = typeof element.closest === 'function' ? element.closest('button') : null;
+        if (!button) return;
+        if (typeof button.closest === 'function' && button.closest('.dfr-root')) return;
+        const label = [
+          button.getAttribute('aria-label') || '',
+          button.getAttribute('title') || '',
+          button.textContent || '',
+        ].join(' ');
+        if (!frBridgeSendLabel.test(label)) return;
+        isSendGesture = true;
+      }
+      if (!isSendGesture) return;
+
+      const block = frSafeFormat(pending, tr);
+      if (!block) return;
+      const current = typeof draftRef.current === 'string' ? draftRef.current : '';
+      if (current.indexOf(block) >= 0) return; // already in the draft: let the composer send it
+      const userText = current.replace(/\s+$/, '');
+      const combined = userText ? userText + '\n\n' + block : block;
+      try {
+        if (typeof event.preventDefault === 'function') event.preventDefault();
+        if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+        if (typeof event.stopPropagation === 'function') event.stopPropagation();
+      } catch (err) { /* ignore */ }
+      sendingRef.current = true;
+      try { actions.setDraft(combined); } catch (err) { sendingRef.current = false; return; }
+      setTimeout(function frBridgeSubmit() {
+        try { actions.submit(); } catch (err) { sendingRef.current = false; return; }
+        // Clear the pending comments only once the composer actually accepted the send
+        // (a rejected submission keeps its draft); the composer clears its draft on success.
+        let attempts = 0;
+        function frBridgeCheckSent() {
+          attempts += 1;
+          const now = typeof draftRef.current === 'string' ? draftRef.current : '';
+          if (!now.trim()) {
+            frPublishComments(sessionId, []);
+            sendingRef.current = false;
+            return;
+          }
+          if (attempts < 8) {
+            setTimeout(frBridgeCheckSent, 300);
+            return;
+          }
+          sendingRef.current = false;
+        }
+        setTimeout(frBridgeCheckSent, 300);
+      }, 90);
+    }
+
+    try {
+      window.addEventListener('keydown', frHandleGesture, true);
+      window.addEventListener('click', frHandleGesture, true);
+    } catch (err) {
+      return undefined;
+    }
+    return function frBridgeRemoveListeners() {
+      try { window.removeEventListener('keydown', frHandleGesture, true); } catch (err) { /* ignore */ }
+      try { window.removeEventListener('click', frHandleGesture, true); } catch (err) { /* ignore */ }
+    };
+  }, [sessionId, actions, tr]);
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // The body factory. `api` is the only data access:
 //   api.list(sessionId, absolutePath, signal) -> RemoteResult<{entries,truncated}>
 //   api.read(sessionId, path, offset, signal) -> RemoteResult<{text,lines,eof,version}>
@@ -1856,11 +2015,27 @@ function frCreateBody(api) {
     const sendAllRef = React.useRef(null);
     const fileBodyRef = React.useRef(null);
 
-    const setComments = React.useCallback(function frSetComments(next) {
+const setComments = React.useCallback(function frSetComments(next) {
       const value = Array.isArray(next) ? next : [];
       commentsRef.current = value;
       setCommentsState(value);
-    }, []);
+      frPublishComments(sessionId, value);
+    }, [sessionId]);
+
+    React.useEffect(function frCommentBusLifecycle() {
+      if (!sessionId) return undefined;
+      const unsubscribe = frSubscribeComments(sessionId, function frExternalComments(next) {
+        const current = Array.isArray(commentsRef.current) ? commentsRef.current : [];
+        const value = Array.isArray(next) ? next : [];
+        if (value.length === current.length && value.every(function frSameId(comment, index) {
+          return comment && current[index] && comment.id === current[index].id;
+        })) return;
+        commentsRef.current = value;
+        setCommentsState(value);
+      });
+      frPublishComments(sessionId, Array.isArray(commentsRef.current) ? commentsRef.current : []);
+      return unsubscribe;
+    }, [sessionId]);
 
     const setOpenPath = React.useCallback(function frSetOpenPath(nextPath) {
       const value = typeof nextPath === 'string' && nextPath ? nextPath : null;
@@ -2022,23 +2197,6 @@ function frCreateBody(api) {
       setPopover(null);
     }, []);
 
-    // One-shot insertion of a pending comment as a native composer quote card. The host
-    // does not publish the quote list (InputState carries no `quotes` field), so this is a
-    // one-way push tracked per tab; re-insertion is deduplicated by the recorded text.
-    const insertCommentCard = React.useCallback(function frInsertCommentCard(comment) {
-      const actions = inputActions;
-      if (!actions || typeof actions.insertQuote !== 'function' || !comment) return false;
-      const quoteText = frQuoteTextForComment(comment);
-      if (!quoteText) return false;
-      const entry = frCacheEntry(tabKey);
-      if (!Array.isArray(entry.quotedTexts)) entry.quotedTexts = [];
-      if (entry.quotedTexts.indexOf(quoteText) >= 0) return false;
-      let inserted = false;
-      try { inserted = actions.insertQuote(quoteText) !== false; } catch (err) { inserted = false; }
-      if (inserted) entry.quotedTexts.push(quoteText);
-      return inserted;
-    }, [inputActions, tabKey]);
-
     const addComment = React.useCallback(function frAddComment(startLine, endLine, text) {
       if (!openPath) return null;
       const raw = typeof text === 'string' ? text.replace(/\r\n/g, '\n').replace(/\r/g, '\n') : '';
@@ -2076,39 +2234,73 @@ function frCreateBody(api) {
       };
       const current = Array.isArray(commentsRef.current) ? commentsRef.current : [];
       setComments(current.concat([comment]));
-      insertCommentCard(comment);
       return comment;
-    }, [insertCommentCard, openPath, setComments]);
+    }, [openPath, setComments]);
 
-    const deleteComment = React.useCallback(function frDeleteComment(commentId) {
+const deleteComment = React.useCallback(function frDeleteComment(commentId) {
       if (typeof commentId !== 'string' || !commentId) return;
       const current = Array.isArray(commentsRef.current) ? commentsRef.current : [];
-      const target = current.filter(function frSameComment(comment) { return comment && comment.id === commentId; })[0];
-      const remaining = current.filter(function frKeepComment(comment) { return comment && comment.id !== commentId; });
-      setComments(remaining);
-      if (target) {
-        const entry = frCacheEntry(tabKey);
-        if (Array.isArray(entry.quotedTexts)) {
-          const quoteText = frQuoteTextForComment(target);
-          entry.quotedTexts = entry.quotedTexts.filter(function frKeepText(text) { return text !== quoteText; });
-        }
-      }
-      showNotice('comment.removedHint');
-    }, [setComments, showNotice, tabKey]);
+      setComments(current.filter(function frKeepComment(comment) {
+        return comment && comment.id !== commentId;
+      }));
+    }, [setComments]);
 
-    const sendAll = React.useCallback(function frSendAll() {
+const sendAll = React.useCallback(function frSendAll() {
       const current = Array.isArray(commentsRef.current) ? commentsRef.current.slice() : [];
       if (!current.length) {
         showNotice('send.none');
         return;
       }
-      let inserted = 0;
-      current.forEach(function frInsertOne(comment) {
-        if (insertCommentCard(comment)) inserted += 1;
+      const block = frSafeFormat(current, tr);
+      if (!block) {
+        showNotice('send.failed');
+        return;
+      }
+      const count = current.length;
+      const actions = inputActions;
+      const canCompose = !!(actions && typeof actions.setDraft === 'function' && typeof actions.submit === 'function');
+      if (canCompose) {
+        const existing = typeof draft === 'string' ? draft : '';
+        const composed = existing ? existing + '\n\n' + block : block;
+        let wrote = false;
+        try {
+          actions.setDraft(composed);
+          wrote = true;
+        } catch (err) {
+          wrote = false;
+        }
+        if (wrote) {
+          setComments([]);
+          showNotice('send.done', { count: count });
+          if (submitTimerRef.current !== null) {
+            try { clearTimeout(submitTimerRef.current); } catch (err) { /* ignore */ }
+            submitTimerRef.current = null;
+          }
+          try {
+            submitTimerRef.current = setTimeout(function frSubmitComposer() {
+              submitTimerRef.current = null;
+              try {
+                if (typeof actions.submit === 'function') actions.submit();
+              } catch (err) { /* ignore */ }
+            }, 60);
+          } catch (err) {
+            submitTimerRef.current = null;
+          }
+          return;
+        }
+      }
+      frCopyText(block).then(function frCopySettled(copied) {
+        if (!mountedRef.current) return;
+        if (copied) {
+          setComments([]);
+          showNotice('send.copied', { count: count });
+        } else {
+          showNotice('send.failed');
+        }
+      }, function frCopyFailed() {
+        if (mountedRef.current) showNotice('send.failed');
       });
-      if (inserted > 0) showNotice('send.inserted', { count: inserted });
-      else showNotice('send.inserted', { count: current.length });
-    }, [insertCommentCard, showNotice]);
+    }, [draft, inputActions, showNotice, setComments, tr]);
 
     React.useEffect(function frSyncSendAll() {
       sendAllRef.current = sendAll;
@@ -2840,7 +3032,7 @@ function frCreateBody(api) {
         className: 'dfr-btn dfr-btn-primary',
         disabled: commentCount === 0,
         onClick: function frSendClick() { sendAll(); },
-      }, frIcon('send', 12), h('span', null, tr('send.insert')));
+      }, frIcon('send', 12), h('span', null, tr('send.sendAll')));
     };
 
     function frRenderTreeRow(row) {
@@ -3226,10 +3418,6 @@ function frCreateBody(api) {
       'search.truncated': '结果过多，已截断',
       'search.scanned': '已扫描 {dirs} 个目录',
       'search.hint': '搜索会跳过 .git、node_modules 等目录',
-      'send.insert': '放入输入框',
-      'send.inserted': '已把 {count} 条评论放入输入框',
-      'comment.deleteInComposer': '请在输入框里删除这条评论卡片',
-      'comment.removedHint': '已从列表移除；输入框中的卡片请在输入框中删除',
       'error.generic': '操作失败',
       'error.outside': '路径不在工作区内',
       'error.notFound': '文件不存在',
@@ -3292,10 +3480,6 @@ function frCreateBody(api) {
       'search.truncated': 'Too many results; showing a subset',
       'search.scanned': 'Scanned {dirs} folders',
       'search.hint': 'Skips .git, node_modules and similar folders',
-      'send.insert': 'Add to composer',
-      'send.inserted': 'Added {count} comments to the composer',
-      'comment.deleteInComposer': 'Remove this comment card in the composer',
-      'comment.removedHint': 'Comment removed; delete its card in the composer',
       'error.generic': 'Something went wrong',
       'error.outside': 'Path outside the workspace',
       'error.notFound': 'File not found',
@@ -3425,6 +3609,24 @@ function frCreateBody(api) {
             ),
           ),
         'file-review: tab body',
+      )
+
+      // Invisible bridge above the composer: while review comments are pending, a normal
+      // send appends them below the user's text (blank line separated) and submits.
+      ctx.effect(
+        () =>
+          ctx.slots.inject('conversation.input.dock', () =>
+            ctx.slots.register(
+              {
+                name: 'conversation.input.dock',
+                id: 'file-review-comment-bridge',
+                order: 90,
+                locale: FR_NS,
+              },
+              FrCommentBridge,
+            ),
+          ),
+        'file-review: composer bridge',
       )
 
       ctx.effect(
