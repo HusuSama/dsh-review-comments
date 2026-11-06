@@ -156,6 +156,28 @@
       )
     }
 
+
+    /**
+     * The tab chip's live title. The tab record captures a title when it opens, so an
+     * already-open tab would stay in the previous language after a locale switch; this
+     * title registration reads the current locale on every render instead.
+     * @param props - framework slot props (locale-bound `t`, optional `useTabInfo`).
+     * @returns the localized chip label.
+     */
+    function frTabTitle(props) {
+      const safe = props && typeof props === 'object' ? props : {}
+      const useTabInfo = typeof safe.useTabInfo === 'function' ? safe.useTabInfo : null
+      const tabInfo = useTabInfo ? useTabInfo() : null
+      const tab = tabInfo && tabInfo.tab && typeof tabInfo.tab === 'object' ? tabInfo.tab : null
+      let label = ''
+      if (typeof safe.t === 'function') {
+        try { label = String(safe.t('type.label') || '') } catch (err) { label = '' }
+      }
+      if (!label && tab && typeof tab.title === 'string') label = tab.title
+      if (!label) label = 'Review'
+      return h('span', null, label)
+    }
+
     /**
      * The tab type: a page type (no resource patterns) opened by kind, with one
      * guide card as the right sidebar's entry point.
@@ -225,6 +247,21 @@
             ),
           ),
         'file-review: tab body',
+      )
+
+      ctx.effect(
+        () =>
+          ctx.slots.inject('sidebar.right.pane.tab.title', () =>
+            ctx.slots.register(
+              {
+                name: 'sidebar.right.pane.tab.title',
+                key: FR_TYPE_ID,
+                locale: FR_NS,
+              },
+              frTabTitle,
+            ),
+          ),
+        'file-review: tab title',
       )
 
       ctx.effect(() => {
