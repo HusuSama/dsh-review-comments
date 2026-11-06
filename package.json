@@ -64,5 +64,6 @@
         "@deepseek-ai/dsh-api-workspace-files"
       ]
     }
-  }
+  },
+  "private": true
 }

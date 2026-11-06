@@ -60,24 +60,24 @@ Git 变更只作为上下文标记展示，浏览变更与写评论互不干扰�
 
 1. 打开 **设置 → 插件**。
 2. 从仓库安装：填入 `https://github.com/HusuSama/dsh-review-comments`（插件管理支持 Git 源），
-   或选择本地 checkout 目录。npm 包名只有在发布到 npm 之后才可用。
+   或选择本地 checkout 目录。
 3. bundle 会自动启用，浏览器半侧热加载进当前页面。
 
 ### 通过命令行
 
 ```bash
-# 当前仓库（尚未发 npm）——pnpm 从 GitHub 安装
+# 从本仓库安装（pnpm 会从 GitHub 拉取）
 dsh plugin --profile web add github:HusuSama/dsh-review-comments
 
 # 或者本地 checkout（开发用）：
 dsh plugin --profile web add link:/absolute/path/to/dsh-review-comments
-
-# npm 形式——只有在发布了 npm 包之后才可用：
-dsh plugin --profile web add dsh-review-comments
 ```
 
 然后在 **设置 → 插件** 里启用 **File Comments** bundle（命令行只添加依赖；插件管理页安装会自动选中
 bundle）。无需重启应用：浏览器半侧热替换，Host 半侧随 bundle 一起启动。
+
+本插件**只通过这个 GitHub 仓库分发**，没有发布 npm 包；请始终使用上面的 `github:` 形式安装
+（或通过插件管理页的 Git 源安装）。
 
 ### 从源码安装
 

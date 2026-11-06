@@ -67,26 +67,26 @@ context marks, so browsing changes and writing comments stay out of each other's
 
 1. Open **Settings → Plugins**.
 2. Install from this repository: paste `https://github.com/HusuSama/dsh-review-comments`
-   (the manager supports GitHub sources) or pick a local checkout directory. The npm
-   package name works only after the package is published to npm.
+   (the manager supports GitHub sources) or pick a local checkout directory.
 3. The bundle is selected automatically — the browser half hot-loads into the open page.
 
 ### From the CLI
 
 ```bash
-# this repository (no npm release yet) — pnpm installs the package from GitHub
+# install from this repository (pnpm fetches the package from GitHub)
 dsh plugin --profile web add github:HusuSama/dsh-review-comments
 
 # local checkout instead, e.g. for development:
 dsh plugin --profile web add link:/absolute/path/to/dsh-review-comments
-
-# npm form — only once a release is published:
-dsh plugin --profile web add dsh-review-comments
 ```
 
 Then enable the **File Comments** bundle in Settings → Plugins (the CLI only adds the
 dependency; the Plugin Manager UI installs and selects it in one step). No app restart is
 needed: the browser half hot-swaps, and the host half starts together with the bundle.
+
+The plugin is distributed **only through this GitHub repository** — there is no npm
+release, so always install with the `github:` spec above (or through the Plugin Manager's
+GitHub source).
 
 ### From source
 
