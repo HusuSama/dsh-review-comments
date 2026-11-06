@@ -47,11 +47,12 @@ context marks, so browsing changes and writing comments stay out of each other's
 - **Line comments** — double-click a line, or drag across lines to select a range, then
   type in the composer that opens below the selection. `Enter` turns it into an inline
   card; `Shift+Enter` adds a newline; `Esc` cancels.
-- **Send comments to the model** — `Ctrl/Cmd+Enter` in the comment box or the panel's send
-  button submits the formatted list. Comments that are still pending are also **appended to
-  any ordinary chat submit**: type your own message, press Enter (or Cmd/Ctrl+Enter / the
-  Send button) in the chat composer, and the message goes out as your text, one blank line,
-  then the comment list — the comment cards stay in the panel until that send is accepted.
+- **Comments live in the chat composer** — every pending comment is inserted as a compact
+  **quote card** in the input box (one line per comment, ellipsized by the host when long;
+  the full text is what will be sent). Nothing is submitted automatically: type your message,
+  review the cards and press Enter / the Send button yourself. Removing a card in the composer
+  removes that comment from the panel; the panel's button (`Add to composer`) only re-inserts
+  missing cards.
 - **Light/dark and zh/en** — colors come from `--dsw-alias-*` theme tokens; the UI ships
   Simplified Chinese and English dictionaries.
 
@@ -117,26 +118,29 @@ guide.
 | Drag across lines | file view | select a line range; composer opens below the selection; the range stays highlighted while you type |
 | `Enter` | composer | add the comment card at that place |
 | `Shift+Enter` | composer | newline inside the comment |
-| `Ctrl/Cmd+Enter` | comment box / header send button | send all pending comments to the model |
-| Enter / Cmd+Enter / Send | chat composer | if comments are pending: your text, one blank line, then the comment list — sent as one message |
+| `Ctrl/Cmd+Enter` | comment box | add the comment; it appears as a quote card in the chat composer |
+| Add to composer | file header | re-insert any comment cards missing from the composer |
+| Enter / Cmd+Enter / Send | chat composer | your message plus the pending comment cards, sent by you — nothing is submitted automatically |
 | `Esc` | composer | cancel |
 | Delete button on a card | comment card | remove that comment |
 
-Comments are cached per sidebar tab, so switching tabs and coming back keeps them; send or
-delete them to clean up.
+Comments are cached per sidebar tab and mirrored as quote cards in the chat composer: the
+cards survive session switching and reloads with the draft. Sending the message clears them;
+removing a card removes the comment.
 
 ### What the model receives
 
-A single user message with an intro line and one ordered-list item per comment — absolute
-path plus `#startLine` (or `#startLine:endLine`), then the comment text. No source excerpts:
-the model can read the file at those lines itself.
+Each comment card is a native composer quote, so the host serializes it as Markdown
+**blockquote** content in the message you send — your own text plus one blockquote line per
+comment, absolute path and `#startLine` (or `#startLine:endLine`) followed by the comment
+text. No source excerpts: the model can read the file at those lines itself.
 
 ```markdown
-我在文件中留了 3 条评审评论，请按文件与行号逐条处理。
+请按下面这些评论逐条处理
 
-1. `/Users/me/proj/README.md#5` 标题需要说明用途
-2. `/Users/me/proj/src/client/index.ts#12` 这里没有处理 null 情况
-3. `/Users/me/proj/src/client/index.ts#20:24` 这段逻辑可以提取为函数
+> `/Users/me/proj/README.md#5` 标题需要说明用途
+> `/Users/me/proj/src/client/index.ts#12` 这里没有处理 null 情况
+> `/Users/me/proj/src/client/index.ts#20:24` 这段逻辑可以提取为函数
 ```
 
 The message follows the active UI language (Chinese above); items are ordered by path and
