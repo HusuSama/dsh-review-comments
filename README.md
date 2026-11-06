@@ -47,12 +47,13 @@ context marks, so browsing changes and writing comments stay out of each other's
 - **Line comments** — double-click a line, or drag across lines to select a range, then
   type in the composer that opens below the selection. `Enter` turns it into an inline
   card; `Shift+Enter` adds a newline; `Esc` cancels.
-- **Comments live in the chat composer** — every pending comment is inserted as a compact
-  **quote card** in the input box (one line per comment, ellipsized by the host when long;
-  the full text is what will be sent). Nothing is submitted automatically: type your message,
-  review the cards and press Enter / the Send button yourself. Removing a card in the composer
-  removes that comment from the panel; the panel's button (`Add to composer`) only re-inserts
-  missing cards.
+- **Comments live in the chat composer** — every pending comment is inserted as a native
+  composer **quote card**. Its size, wrapping, colours and remove control come entirely from
+  the host's own quote style; the plugin adds no styling or configuration for it (the text is
+  kept single-line so the host can render it compactly). Nothing is submitted automatically:
+  type your message, review the cards and press Enter / the Send button yourself. Removing a
+  card in the composer removes that comment from the panel; the panel's button
+  (`Add to composer`) only re-inserts missing cards.
 - **Light/dark and zh/en** — colors come from `--dsw-alias-*` theme tokens; the UI ships
   Simplified Chinese and English dictionaries.
 
