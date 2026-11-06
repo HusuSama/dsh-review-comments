@@ -354,6 +354,55 @@
         )
       })
 
+
+      // Shortcut fallback: the configurable-shortcut service did not accept our command in
+      // every environment (it validates defaults across all profiles), and the desktop build
+      // dispatches configurable chords natively. This listener guarantees the documented
+      // desktop chord works regardless: Cmd/Ctrl+Alt+R (R also accepted on web; K everywhere
+      // because primary+alt+R is the web page.refresh binding).
+      ctx.effect(() => {
+        if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') {
+          return undefined
+        }
+        const ua = typeof navigator !== 'undefined' && navigator ? String(navigator.userAgent || '') : ''
+        const electron = /Electron/i.test(ua)
+        const isMac = typeof navigator !== 'undefined' && navigator ? /Mac/i.test(String(navigator.platform || ua)) : false
+        let lastOpen = 0
+        const openFromDom = (event) => {
+          try {
+            if (!event || event.defaultPrevented || event.isComposing) return
+            if (!event.altKey || event.shiftKey) return
+            const primary = isMac ? event.metaKey : event.ctrlKey
+            if (!primary) return
+            const key = String(event.key || '').toLowerCase()
+            const matches = key === 'k' || (key === 'r' && electron)
+            if (!matches) return
+            const now = Date.now()
+            if (now - lastOpen < 300) return
+            const sidebar = ctx.sidebarRight
+            if (!sidebar) return
+            const target = typeof sidebar.commandTarget === 'function'
+              ? sidebar.commandTarget(typeof document !== 'undefined' ? document.activeElement : undefined)
+              : undefined
+            if (target !== undefined && typeof sidebar.openTabFromTarget === 'function') {
+              lastOpen = now
+              if (typeof event.preventDefault === 'function') event.preventDefault()
+              sidebar.openTabFromTarget('file-review', target)
+              return
+            }
+            if (typeof sidebar.openTab === 'function') {
+              lastOpen = now
+              if (typeof event.preventDefault === 'function') event.preventDefault()
+              sidebar.openTab('file-review')
+            }
+          } catch (error) { /* never break input */ }
+        }
+        window.addEventListener('keydown', openFromDom, true)
+        return () => {
+          try { window.removeEventListener('keydown', openFromDom, true) } catch (error) { /* ignore */ }
+        }
+      }, 'file-review: shortcut fallback')
+
     }
 
     /**
