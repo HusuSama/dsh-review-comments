@@ -3,6 +3,8 @@
     /** Simplified Chinese runtime dictionary; the key set is shared with FR_EN. */
     const FR_ZH = {
       'type.label': '评论',
+      'shortcut.label': '打开文件评审',
+      'shortcut.noSession': '请先选择会话',
       'guide.title': '文件评审',
       'guide.description': '浏览文件，按行评审并发送评论',
       'tree.title': '工作区文件',
@@ -71,6 +73,8 @@
     /** English runtime dictionary; same key set as FR_ZH. */
     const FR_EN = {
       'type.label': 'Review',
+      'shortcut.label': 'Open file review',
+      'shortcut.noSession': 'Select a session first',
       'guide.title': 'File review',
       'guide.description': 'Browse files, comment on lines, and send',
       'tree.title': 'Workspace files',
@@ -204,6 +208,7 @@
           {
             id: 'review',
             order: 30,
+            commandId: 'file-review.open',
             title: () => t('guide.title'),
             description: () => t('guide.description'),
             icon: frGuideIcon,
@@ -216,6 +221,7 @@
     const inject = [
       'slots',
       'locale',
+      'shortcuts',
       'sidebarRightTabs',
       'sidebarRight',
       'remote',
@@ -236,6 +242,42 @@
       )
 
       ctx.effect(() => ctx.sidebarRightTabs.register(frTabDefinition(t)), 'file-review: tab type')
+
+
+      // Default shortcut: Cmd/Ctrl + Alt + R (R for review). It is deliberately not a
+      // common app/browser chord; users can rebind it in Settings → Shortcuts.
+      ctx.inject(['shortcuts'], (scope) => {
+        scope.effect(
+          () =>
+            scope.shortcuts.register({
+              id: 'file-review.open',
+              label: () => t('shortcut.label'),
+              aliases: ['file review', 'review comments', '文件评审'],
+              defaults: {
+                'desktop:macos': { code: 'KeyR', modifiers: ['primary', 'alt'] },
+                'desktop:windows': { code: 'KeyR', modifiers: ['primary', 'alt'] },
+                'desktop:linux': { code: 'KeyR', modifiers: ['primary', 'alt'] },
+                'web:macos': { code: 'KeyR', modifiers: ['primary', 'alt'] },
+                'web:windows': { code: 'KeyR', modifiers: ['primary', 'alt'] },
+              },
+              regions: ['page', 'editable', 'terminal'],
+              modals: [],
+              resolve: ({ target: element }) => {
+                const target = ctx.sidebarRight.commandTarget(element)
+                if (target === undefined) {
+                  return { status: 'blocked', reason: t('shortcut.noSession') }
+                }
+                return {
+                  status: 'handled',
+                  run: () => {
+                    ctx.sidebarRight.openTabFromTarget('file-review', target)
+                  },
+                }
+              },
+            }),
+          'file-review: open shortcut',
+        )
+      })
 
       const api = {
         list: (sessionId, absolutePath, signal) =>
