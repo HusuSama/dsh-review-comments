@@ -50,7 +50,8 @@ context marks, so browsing changes and writing comments stay out of each other's
 - **Jump between comments** — the file header shows the current position (`2/7`) with
   previous/next buttons; `Ctrl/Cmd+Up/Down`, `Ctrl/Cmd+P/N` and `Ctrl/Cmd+wheel` jump too.
   The tree shows a right-aligned comment count per file and, for folders, the aggregate of
-  everything below them.
+  everything below them; the browser footer always shows the workspace total, and a
+  **Delete all comments** button sits in the browser header, the file header and that footer.
 - **Send comments to the model** — `Ctrl/Cmd+Enter` in the comment box or the panel's send
   button submits the formatted list. Comments that are still pending are also **appended to
   any ordinary chat submit**: type your own message, press Enter (or Cmd/Ctrl+Enter / the

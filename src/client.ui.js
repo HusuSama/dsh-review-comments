@@ -1351,7 +1351,7 @@ const setComments = React.useCallback(function frSetComments(next) {
       return comment;
     }, [openPath, setComments]);
 
-const deleteComment = React.useCallback(function frDeleteComment(commentId) {
+    const deleteComment = React.useCallback(function frDeleteComment(commentId) {
       if (typeof commentId !== 'string' || !commentId) return;
       const current = Array.isArray(commentsRef.current) ? commentsRef.current : [];
       setComments(current.filter(function frKeepComment(comment) {
@@ -1359,7 +1359,14 @@ const deleteComment = React.useCallback(function frDeleteComment(commentId) {
       }));
     }, [setComments]);
 
-const sendAll = React.useCallback(function frSendAll() {
+    const deleteAllComments = React.useCallback(function frDeleteAllComments() {
+      const current = Array.isArray(commentsRef.current) ? commentsRef.current.slice() : [];
+      if (!current.length) return;
+      setComments([]);
+      showNotice('comment.cleared', { count: current.length });
+    }, [setComments, showNotice]);
+
+    const sendAll = React.useCallback(function frSendAll() {
       const current = Array.isArray(commentsRef.current) ? commentsRef.current.slice() : [];
       if (!current.length) {
         showNotice('send.none');
@@ -2483,6 +2490,10 @@ const sendAll = React.useCallback(function frSendAll() {
         ),
         h('div', { className: 'dfr-header-actions' },
           gitToggleButton(),
+          frIconButton(tr('comment.deleteAll'), 'trash', function frDeleteAllClick() { deleteAllComments(); }, {
+            disabled: commentCount === 0,
+            className: 'dfr-danger',
+          }),
           frIconButton(tr('tree.refresh'), 'refresh', function frRefreshClick() { refreshTree(); })
         )
       ),
@@ -2505,10 +2516,14 @@ const sendAll = React.useCallback(function frSendAll() {
           ? frRenderSearchList()
           : (gitOnly && gitAvailable ? frRenderGitChangedList() : treeContent)
       ),
-      commentCount > 0 ? h('div', { className: 'dfr-footer' },
+      h('div', { className: 'dfr-footer' },
         h('span', { className: 'dfr-footer-count' }, tr('comment.count', { count: commentCount })),
+        frIconButton(tr('comment.deleteAll'), 'trash', function frDeleteAllFooterClick() { deleteAllComments(); }, {
+          disabled: commentCount === 0,
+          className: 'dfr-danger',
+        }),
         sendButton()
-      ) : null
+      )
     );
 
     const displayPath = openPath
@@ -2574,6 +2589,10 @@ const sendAll = React.useCallback(function frSendAll() {
           frIconButton(tr('comment.next'), 'down', function frNextCommentClick() { jumpToComment(1); }, {
             disabled: navTotal === 0 || navIndex >= navTotal - 1,
             className: 'dfr-comment-nav',
+          }),
+          frIconButton(tr('comment.deleteAll'), 'trash', function frDeleteAllFileClick() { deleteAllComments(); }, {
+            disabled: commentCount === 0,
+            className: 'dfr-danger',
           }),
           frIconButton(tr('file.reload'), 'refresh', function frReloadClick() { reloadFile(); }),
           sendButton()
