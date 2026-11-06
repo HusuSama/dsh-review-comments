@@ -182,746 +182,213 @@ function frFormatReviewMessage(comments, tr) {
 }
 
 /* ==========================================================================
- * Optimization pass 1 — lightweight syntax highlighting.
+ * Optimization pass 7 — Prism-based syntax highlighting.
  * --------------------------------------------------------------------------
- * frDetectLanguage maps a path to a language id; frHighlightLines turns raw
- * source lines into one token array per line. The highlighter is lexical only
- * (no parsing) and guarantees the invariant the UI relies on:
- *
- *   tokens.map(t => t.v).join('') === originalLine
- *
- * It never throws on malformed input: unterminated strings stay inside their
- * string token to the end of the line, unterminated block comments / HTML
- * comments / Markdown fences keep their multi-line state.
+ * The vendored Prism build (src/vendor/prism.min.js) is concatenated into the
+ * same factory scope before this fragment and exposes `FR_PRISM` (Prism 1.30.0
+ * with a fixed language subset). frDetectLanguage maps paths to Prism language
+ * ids; frHighlightLines tokenizes the whole file text and splits the Prism
+ * tokens back into one `{ k, v }` array per source line. The UI relies on the
+ * invariant tokens.map(t => t.v).join('') === originalLine; when that check
+ * fails (or Prism is unavailable/throws) the plain fallback is returned.
  * ========================================================================== */
 
 const FR_HL_MAX_LINES = 5000;
 
-/* Language ids accepted by frHighlightLines (anything else falls back to plain). */
-const FR_HL_LANGS = {
-  js: 1, json: 1, css: 1, html: 1, md: 1, hash: 1, sql: 1, diff: 1, plain: 1,
-};
-
-/* Lower-cased basename extension -> language id. */
-const FR_HL_LANG_BY_EXT = {
-  js: 'js', jsx: 'js', ts: 'js', tsx: 'js', mjs: 'js', cjs: 'js', json5: 'js',
+/* Lower-cased basename extension -> Prism language id. */
+const FR_PRISM_LANG_BY_EXT = {
+  js: 'javascript', mjs: 'javascript', cjs: 'javascript', json5: 'javascript',
+  jsx: 'jsx',
+  ts: 'typescript', mts: 'typescript', cts: 'typescript',
+  tsx: 'tsx',
   json: 'json',
   css: 'css', scss: 'css', less: 'css', sass: 'css',
-  html: 'html', htm: 'html', xml: 'html', svg: 'html', vue: 'html',
-  md: 'md', markdown: 'md', mdx: 'md',
-  py: 'hash', rb: 'hash', sh: 'hash', bash: 'hash', zsh: 'hash', fish: 'hash',
-  yaml: 'hash', yml: 'hash', toml: 'hash', ini: 'hash', conf: 'hash', cfg: 'hash',
-  dockerfile: 'hash', makefile: 'hash', mk: 'hash', gradle: 'hash',
-  properties: 'hash', env: 'hash',
+  html: 'markup', htm: 'markup', xml: 'markup', svg: 'markup', vue: 'markup',
+  svelte: 'markup',
+  md: 'markdown', markdown: 'markdown', mdx: 'markdown',
+  py: 'python', pyw: 'python',
+  sh: 'bash', bash: 'bash', zsh: 'bash', fish: 'bash',
+  yaml: 'yaml', yml: 'yaml',
+  toml: 'toml',
+  ini: 'ini', conf: 'ini', cfg: 'ini', properties: 'ini', env: 'ini',
   sql: 'sql',
   diff: 'diff', patch: 'diff',
+  go: 'go',
+  rs: 'rust',
+  java: 'java',
 };
 
-/* Keyword tables. */
-const FR_HL_JS_KEYWORDS = {
-  const: 1, let: 1, var: 1, function: 1, return: 1, if: 1, else: 1, for: 1, while: 1,
-  class: 1, import: 1, from: 1, export: 1, new: 1, async: 1, await: 1, try: 1,
-  catch: 1, throw: 1, switch: 1, case: 1, break: 1, continue: 1, typeof: 1,
-  instanceof: 1, delete: 1, in: 1, of: 1, this: 1, super: 1, true: 1, false: 1,
-  null: 1, undefined: 1, interface: 1, type: 1, enum: 1, implements: 1, extends: 1,
-  readonly: 1, static: 1, public: 1, private: 1,
+/* Language ids this module accepts (everything else falls back to plain, even if
+ * the vendored Prism happens to expose an alias grammar such as 'text'). */
+const FR_PRISM_LANG_IDS = {
+  javascript: 1, jsx: 1, typescript: 1, tsx: 1, json: 1, css: 1, markup: 1,
+  markdown: 1, python: 1, bash: 1, yaml: 1, toml: 1, ini: 1, sql: 1, diff: 1,
+  go: 1, rust: 1, java: 1,
 };
 
-const FR_HL_HASH_KEYWORDS = {
-  def: 1, class: 1, import: 1, from: 1, return: 1, if: 1, elif: 1, else: 1, for: 1,
-  while: 1, in: 1, and: 1, or: 1, not: 1, None: 1, True: 1, False: 1, function: 1,
-  echo: 1, export: 1, local: 1, then: 1, fi: 1, do: 1, done: 1, let: 1,
+/* Prism token type -> UI kind (case-insensitive; first recognised hit wins). */
+const FR_PRISM_KINDS = {
+  keyword: 'keyword', important: 'keyword', atrule: 'keyword', title: 'keyword',
+  string: 'string', char: 'string', regex: 'string', 'template-string': 'string',
+  'attr-value': 'string', url: 'string', code: 'string',
+  comment: 'comment', prolog: 'comment', doctype: 'comment', cdata: 'comment',
+  number: 'number', boolean: 'number', constant: 'number', symbol: 'number',
+  unit: 'number', hexcode: 'number',
+  function: 'func', method: 'func',
+  'class-name': 'type', builtin: 'type', namespace: 'type', type: 'type',
+  annotation: 'type', bold: 'type', italic: 'type',
+  tag: 'tag', selector: 'tag',
+  'attr-name': 'attr', property: 'attr', 'property-access': 'attr',
+  punctuation: 'punct', operator: 'punct', 'interpolation-punctuation': 'punct',
+  hr: 'punct', list: 'punct', blockquote: 'punct',
+  /* Prism's diff grammar uses marker types that the shared table does not list;
+   * map them so diff output stays readable (deviation reported to the Lead). */
+  coord: 'keyword',
+  inserted: 'string', 'inserted-sign': 'string',
+  deleted: 'comment', 'deleted-sign': 'comment',
 };
 
-const FR_HL_SQL_KEYWORDS = {
-  SELECT: 1, FROM: 1, WHERE: 1, INSERT: 1, INTO: 1, UPDATE: 1, DELETE: 1, JOIN: 1,
-  GROUP: 1, BY: 1, ORDER: 1, HAVING: 1, LIMIT: 1, VALUES: 1, SET: 1, CREATE: 1,
-  TABLE: 1, INDEX: 1, AND: 1, OR: 1, NOT: 1, NULL: 1, AS: 1, ON: 1,
-};
-
-/* Punctuation characters per language. */
-const FR_HL_JS_PUNCT = '{}()[];,.:?=+-*/%<>!&|^~@#';
-const FR_HL_CSS_PUNCT = '{}()[];,.:>+~*&=!@%^|/$#?<>';
-const FR_HL_SQL_PUNCT = '{}()[];,.:?=+-*/%<>!&|^~@#';
-
-/* Numeric literals (radix prefixes, decimals, exponents; no leading sign). */
-const FR_HL_NUMBER_RE = /^(?:0[xX][0-9a-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|\d[\d_]*(?:\.[\d_]*)?(?:[eE][+-]?\d+)?|\.\d[\d_]*(?:[eE][+-]?\d+)?)/;
-
-/* --------------------------------------------------------------------------
- * Small lexical helpers
- * -------------------------------------------------------------------------- */
-
-function frHlIsDigit(ch) {
-  return ch >= '0' && ch <= '9';
+/* One plain token per line: fallback for plain/unknown/absent output. */
+function frHighlightPlain(textLines) {
+  const result = [];
+  for (let i = 0; i < textLines.length; i += 1) {
+    result.push([{ k: 'plain', v: textLines[i] }]);
+  }
+  return result;
 }
 
-function frHlIsIdentStart(ch) {
-  return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch === '_' || ch === '$';
+/* Our kind for a Prism type/alias name; '' when it is not mapped. */
+function frPrismTypeKind(name) {
+  if (typeof name !== 'string') return '';
+  const key = name.toLowerCase();
+  return Object.prototype.hasOwnProperty.call(FR_PRISM_KINDS, key)
+    ? FR_PRISM_KINDS[key]
+    : '';
 }
 
-function frHlIsIdentPart(ch) {
-  return frHlIsIdentStart(ch) || frHlIsDigit(ch);
+/* Kind of one Prism Token: recognised alias first, then its own type; an
+ * unknown nested token keeps the enclosing token's kind. */
+function frPrismTokenKind(token, inheritedKind) {
+  const alias = token.alias;
+  if (typeof alias === 'string') {
+    const byAlias = frPrismTypeKind(alias);
+    if (byAlias) return byAlias;
+  } else if (Array.isArray(alias)) {
+    for (let i = 0; i < alias.length; i += 1) {
+      const byAlias = frPrismTypeKind(alias[i]);
+      if (byAlias) return byAlias;
+    }
+  }
+  const byType = frPrismTypeKind(token.type);
+  return byType || inheritedKind;
 }
 
-/* Append one token, merging into the previous token when it is also 'plain'. */
-function frHlPush(out, kind, value) {
-  if (!value) return;
-  if (kind === 'plain' && out.length > 0 && out[out.length - 1].k === 'plain') {
-    out[out.length - 1].v += value;
+/* Flatten Prism's nested tokens into flat { k, v } segments; strings take the
+ * enclosing token's kind. */
+function frPrismFlatten(node, inheritedKind, out) {
+  if (typeof node === 'string') {
+    if (node !== '') out.push({ k: inheritedKind, v: node });
     return;
   }
-  out.push({ k: kind, v: value });
-}
-
-/* Every line yields at least one token; an otherwise empty line stays one 'plain'. */
-function frHlFinish(out, line) {
-  if (out.length === 0) out.push({ k: 'plain', v: line });
-  return out;
-}
-
-function frHlReadIdent(line, start, allowDash) {
-  let i = start + 1;
-  while (i < line.length) {
-    const ch = line.charAt(i);
-    if (frHlIsIdentPart(ch) || (allowDash && ch === '-')) i += 1;
-    else break;
+  if (Array.isArray(node)) {
+    for (let i = 0; i < node.length; i += 1) {
+      frPrismFlatten(node[i], inheritedKind, out);
+    }
+    return;
   }
-  return i;
-}
-
-/* End index (exclusive) of a quoted run; an unterminated run ends with the line. */
-function frHlReadString(line, start, quote, escapes) {
-  let i = start + 1;
-  while (i < line.length) {
-    const ch = line.charAt(i);
-    if (escapes && ch === '\\') {
-      i += 2;
-      continue;
-    }
-    if (ch === quote) return i + 1;
-    i += 1;
+  if (!node || typeof node !== 'object' || typeof node.type !== 'string') return;
+  const kind = frPrismTokenKind(node, inheritedKind);
+  const content = node.content;
+  if (typeof content === 'string') {
+    if (content !== '') out.push({ k: kind, v: content });
+    return;
   }
-  return line.length;
+  if (content && typeof content === 'object') frPrismFlatten(content, kind, out);
 }
 
-function frHlReadNumber(line, start) {
-  const match = FR_HL_NUMBER_RE.exec(line.slice(start));
-  return match ? start + match[0].length : start + 1;
-}
-
-/* --------------------------------------------------------------------------
- * JavaScript / TypeScript
- * -------------------------------------------------------------------------- */
-
-function frHlJsSpecial(ch) {
-  if (ch === '"' || ch === "'" || ch === '`' || ch === '/') return true;
-  if (frHlIsIdentStart(ch) || frHlIsDigit(ch)) return true;
-  return FR_HL_JS_PUNCT.indexOf(ch) >= 0;
-}
-
-function frHlLineJs(line, state) {
-  const out = [];
-  let i = 0;
-
-  if (state.block === 'js') {
-    const close = line.indexOf('*/');
-    if (close < 0) {
-      out.push({ k: 'comment', v: line });
-      return out;
+/* Split flat segments on newlines into one token array per source line;
+ * empty values are dropped and adjacent same-kind tokens are merged. */
+function frPrismSplitLines(segments, lineCount) {
+  const perLine = [];
+  for (let i = 0; i < lineCount; i += 1) perLine.push([]);
+  let lineIndex = 0;
+  for (let s = 0; s < segments.length; s += 1) {
+    const segment = segments[s];
+    const parts = segment.v.split('\n');
+    for (let p = 0; p < parts.length; p += 1) {
+      if (p > 0) lineIndex += 1;
+      const value = parts[p];
+      if (value === '') continue;
+      if (lineIndex >= lineCount || lineIndex < 0) return perLine;
+      const tokens = perLine[lineIndex];
+      const last = tokens.length > 0 ? tokens[tokens.length - 1] : null;
+      if (last && last.k === segment.k) last.v += value;
+      else tokens.push({ k: segment.k, v: value });
     }
-    frHlPush(out, 'comment', line.slice(0, close + 2));
-    state.block = '';
-    i = close + 2;
   }
+  return perLine;
+}
 
-  while (i < line.length) {
-    const ch = line.charAt(i);
-    const next = i + 1 < line.length ? line.charAt(i + 1) : '';
-    if (ch === '/' && next === '/') {
-      frHlPush(out, 'comment', line.slice(i));
-      break;
-    }
-    if (ch === '/' && next === '*') {
-      const close = line.indexOf('*/', i + 2);
-      if (close < 0) {
-        frHlPush(out, 'comment', line.slice(i));
-        state.block = 'js';
-        break;
-      }
-      frHlPush(out, 'comment', line.slice(i, close + 2));
-      i = close + 2;
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === '`') {
-      const end = frHlReadString(line, i, ch, true);
-      frHlPush(out, 'string', line.slice(i, end));
-      i = end;
-      continue;
-    }
-    if (frHlIsDigit(ch) || (ch === '.' && frHlIsDigit(next))) {
-      const end = frHlReadNumber(line, i);
-      frHlPush(out, 'number', line.slice(i, end));
-      i = end;
-      continue;
-    }
-    if (frHlIsIdentStart(ch)) {
-      const end = frHlReadIdent(line, i, false);
-      const word = line.slice(i, end);
-      const after = end < line.length ? line.charAt(end) : '';
-      const head = word.charAt(0);
-      if (FR_HL_JS_KEYWORDS[word] === 1) frHlPush(out, 'keyword', word);
-      else if (head >= 'A' && head <= 'Z') frHlPush(out, 'type', word);
-      else if (after === '(') frHlPush(out, 'func', word);
-      else frHlPush(out, 'plain', word);
-      i = end;
-      continue;
-    }
-    if (FR_HL_JS_PUNCT.indexOf(ch) >= 0) {
-      let end = i + 1;
-      while (end < line.length) {
-        const c = line.charAt(end);
-        if (FR_HL_JS_PUNCT.indexOf(c) < 0) break;
-        if (c === '/' && (line.charAt(end + 1) === '/' || line.charAt(end + 1) === '*')) break;
-        end += 1;
-      }
-      frHlPush(out, 'punct', line.slice(i, end));
-      i = end;
-      continue;
-    }
-    let end = i + 1;
-    while (end < line.length && !frHlJsSpecial(line.charAt(end))) end += 1;
-    frHlPush(out, 'plain', line.slice(i, end));
-    i = end;
+/* Safe String() for one source line (hostile values become ''). */
+function frHighlightLineText(value) {
+  if (value == null) return '';
+  try {
+    return String(value);
+  } catch (err) {
+    return '';
   }
-
-  return frHlFinish(out, line);
 }
 
-/* --------------------------------------------------------------------------
- * JSON
- * -------------------------------------------------------------------------- */
-
-function frHlJsonSpecial(ch) {
-  if (ch === '"' || ch === '-' || ch === '.' || ch === ':') return true;
-  if (frHlIsIdentStart(ch) || frHlIsDigit(ch)) return true;
-  return '{}[],'.indexOf(ch) >= 0;
-}
-
-function frHlLineJson(line) {
-  const out = [];
-  let i = 0;
-  while (i < line.length) {
-    const ch = line.charAt(i);
-    const next = i + 1 < line.length ? line.charAt(i + 1) : '';
-    if (ch === '"') {
-      const end = frHlReadString(line, i, '"', true);
-      frHlPush(out, 'string', line.slice(i, end));
-      i = end;
-      continue;
-    }
-    if (frHlIsDigit(ch) || (ch === '-' && frHlIsDigit(next)) || (ch === '.' && frHlIsDigit(next))) {
-      const start = ch === '-' ? i + 1 : i;
-      const end = frHlReadNumber(line, start);
-      frHlPush(out, 'number', line.slice(i, end));
-      i = end;
-      continue;
-    }
-    if (frHlIsIdentStart(ch)) {
-      const end = frHlReadIdent(line, i, false);
-      const word = line.slice(i, end);
-      if (word === 'true' || word === 'false' || word === 'null') frHlPush(out, 'keyword', word);
-      else frHlPush(out, 'plain', word);
-      i = end;
-      continue;
-    }
-    if ('{}[],:'.indexOf(ch) >= 0) {
-      frHlPush(out, 'punct', ch);
-      i += 1;
-      continue;
-    }
-    let end = i + 1;
-    while (end < line.length && !frHlJsonSpecial(line.charAt(end))) end += 1;
-    frHlPush(out, 'plain', line.slice(i, end));
-    i = end;
+/* One token array per input line, using the vendored Prism when available. */
+function frHighlightLines(lines, lang) {
+  const input = Array.isArray(lines) ? lines : [];
+  const textLines = [];
+  for (let i = 0; i < input.length; i += 1) {
+    textLines.push(frHighlightLineText(input[i]));
   }
-  return frHlFinish(out, line);
-}
-
-/* --------------------------------------------------------------------------
- * CSS
- * -------------------------------------------------------------------------- */
-
-function frHlCssIdentStart(ch) {
-  return ch === '-' || ch === '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
-}
-
-function frHlCssSpecial(ch) {
-  if (ch === '"' || ch === "'" || ch === '/') return true;
-  if (frHlCssIdentStart(ch) || frHlIsDigit(ch)) return true;
-  return FR_HL_CSS_PUNCT.indexOf(ch) >= 0;
-}
-
-function frHlReadCssIdent(line, start) {
-  let i = start;
-  while (i < line.length) {
-    const ch = line.charAt(i);
-    if (frHlIsIdentPart(ch) || ch === '-') i += 1;
-    else break;
-  }
-  return i > start ? i : start + 1;
-}
-
-function frHlLineCss(line, state) {
-  const out = [];
-  let i = 0;
-
-  if (state.block === 'css') {
-    const close = line.indexOf('*/');
-    if (close < 0) {
-      out.push({ k: 'comment', v: line });
-      return out;
-    }
-    frHlPush(out, 'comment', line.slice(0, close + 2));
-    state.block = '';
-    i = close + 2;
-  }
-
-  while (i < line.length) {
-    const ch = line.charAt(i);
-    const next = i + 1 < line.length ? line.charAt(i + 1) : '';
-    if (ch === '/' && next === '*') {
-      const close = line.indexOf('*/', i + 2);
-      if (close < 0) {
-        frHlPush(out, 'comment', line.slice(i));
-        state.block = 'css';
-        break;
-      }
-      frHlPush(out, 'comment', line.slice(i, close + 2));
-      i = close + 2;
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      const end = frHlReadString(line, i, ch, true);
-      frHlPush(out, 'string', line.slice(i, end));
-      i = end;
-      continue;
+  try {
+    if (textLines.length === 0) return [];
+    if (typeof FR_PRISM !== 'object' || !FR_PRISM || !FR_PRISM.languages) {
+      return frHighlightPlain(textLines);
     }
     if (
-      frHlIsDigit(ch)
-      || (ch === '-' && frHlIsDigit(next))
-      || (ch === '+' && frHlIsDigit(next))
-      || (ch === '.' && frHlIsDigit(next))
+      typeof lang !== 'string'
+      || lang === 'plain'
+      || !Object.prototype.hasOwnProperty.call(FR_PRISM_LANG_IDS, lang)
+      || !Object.prototype.hasOwnProperty.call(FR_PRISM.languages, lang)
     ) {
-      const start = ch === '-' || ch === '+' ? i + 1 : i;
-      const end = frHlReadNumber(line, start);
-      frHlPush(out, 'number', line.slice(i, end));
-      i = end;
-      continue;
+      return frHighlightPlain(textLines);
     }
-    if (frHlCssIdentStart(ch)) {
-      const end = frHlReadCssIdent(line, i);
-      const word = line.slice(i, end);
-      if (line.charAt(end) === ':') frHlPush(out, 'attr', word);
-      else frHlPush(out, 'plain', word);
-      i = end;
-      continue;
+    const tokens = FR_PRISM.tokenize(
+      textLines.join('\n'),
+      FR_PRISM.languages[lang],
+    );
+    const segments = [];
+    frPrismFlatten(tokens, 'plain', segments);
+    const perLine = frPrismSplitLines(segments, textLines.length);
+    if (perLine.length !== textLines.length) return frHighlightPlain(textLines);
+    for (let i = 0; i < textLines.length; i += 1) {
+      let joined = '';
+      const lineTokens = perLine[i];
+      for (let t = 0; t < lineTokens.length; t += 1) joined += lineTokens[t].v;
+      if (joined !== textLines[i]) return frHighlightPlain(textLines);
     }
-    if (FR_HL_CSS_PUNCT.indexOf(ch) >= 0) {
-      let end = i + 1;
-      while (end < line.length) {
-        const c = line.charAt(end);
-        if (FR_HL_CSS_PUNCT.indexOf(c) < 0) break;
-        if (c === '/' && line.charAt(end + 1) === '*') break;
-        end += 1;
-      }
-      frHlPush(out, 'punct', line.slice(i, end));
-      i = end;
-      continue;
-    }
-    let end = i + 1;
-    while (end < line.length && !frHlCssSpecial(line.charAt(end))) end += 1;
-    frHlPush(out, 'plain', line.slice(i, end));
-    i = end;
-  }
-
-  return frHlFinish(out, line);
-}
-
-/* --------------------------------------------------------------------------
- * HTML / XML / SVG / Vue
- * -------------------------------------------------------------------------- */
-
-function frHlHtmlTagSpecial(ch) {
-  if (ch === '>' || ch === '=' || ch === '<' || ch === '/' || ch === '"' || ch === "'") return true;
-  return frHlIsIdentStart(ch) || ch === '-' || ch === ':' || ch === '@';
-}
-
-function frHlReadHtmlName(line, start) {
-  let i = start;
-  while (i < line.length) {
-    const ch = line.charAt(i);
-    if (frHlIsIdentPart(ch) || ch === '-' || ch === ':' || ch === '.' || ch === '@') i += 1;
-    else break;
-  }
-  return i > start ? i : start + 1;
-}
-
-function frHlLineHtml(line, state) {
-  const out = [];
-  let i = 0;
-
-  if (state.block === 'html') {
-    const close = line.indexOf('-->');
-    if (close < 0) {
-      out.push({ k: 'comment', v: line });
-      return out;
-    }
-    frHlPush(out, 'comment', line.slice(0, close + 3));
-    state.block = '';
-    i = close + 3;
-  }
-
-  let inTag = false;
-  while (i < line.length) {
-    if (line.startsWith('<!--', i)) {
-      const close = line.indexOf('-->', i + 4);
-      if (close < 0) {
-        frHlPush(out, 'comment', line.slice(i));
-        state.block = 'html';
-        break;
-      }
-      frHlPush(out, 'comment', line.slice(i, close + 3));
-      i = close + 3;
-      continue;
-    }
-    const ch = line.charAt(i);
-    if (ch === '<') {
-      const tag = /^<\/?[A-Za-z][A-Za-z0-9:._-]*/.exec(line.slice(i));
-      if (tag) {
-        frHlPush(out, 'tag', tag[0]);
-        i += tag[0].length;
-        inTag = true;
-        continue;
-      }
-      frHlPush(out, 'punct', ch);
-      i += 1;
-      continue;
-    }
-    if (inTag) {
-      if (ch === '>') {
-        frHlPush(out, 'punct', ch);
-        i += 1;
-        inTag = false;
-        continue;
-      }
-      if (ch === '/' && i + 1 < line.length && line.charAt(i + 1) === '>') {
-        frHlPush(out, 'punct', '/>');
-        i += 2;
-        inTag = false;
-        continue;
-      }
-      if (ch === '=') {
-        frHlPush(out, 'punct', ch);
-        i += 1;
-        continue;
-      }
-      if (ch === '"' || ch === "'") {
-        const end = frHlReadString(line, i, ch, false);
-        frHlPush(out, 'string', line.slice(i, end));
-        i = end;
-        continue;
-      }
-      if (frHlIsIdentStart(ch) || ch === '-' || ch === ':' || ch === '@') {
-        const end = frHlReadHtmlName(line, i);
-        const name = line.slice(i, end);
-        let k = end;
-        while (k < line.length && (line.charAt(k) === ' ' || line.charAt(k) === '\t')) k += 1;
-        if (line.charAt(k) === '=') frHlPush(out, 'attr', name);
-        else frHlPush(out, 'plain', name);
-        i = end;
-        continue;
-      }
-      let end = i + 1;
-      while (end < line.length && !frHlHtmlTagSpecial(line.charAt(end))) end += 1;
-      frHlPush(out, 'plain', line.slice(i, end));
-      i = end;
-      continue;
-    }
-    let end = i + 1;
-    while (end < line.length && line.charAt(end) !== '<') end += 1;
-    frHlPush(out, 'plain', line.slice(i, end));
-    i = end;
-  }
-
-  return frHlFinish(out, line);
-}
-
-/* --------------------------------------------------------------------------
- * Markdown
- * -------------------------------------------------------------------------- */
-
-function frHlScanMdInline(out, line, start) {
-  let i = start;
-  while (i < line.length) {
-    const ch = line.charAt(i);
-    if (ch === '`') {
-      const close = line.indexOf('`', i + 1);
-      if (close < 0) {
-        frHlPush(out, 'string', line.slice(i));
-        return;
-      }
-      frHlPush(out, 'string', line.slice(i, close + 1));
-      i = close + 1;
-      continue;
-    }
-    if ((ch === '*' && line.charAt(i + 1) === '*') || (ch === '_' && line.charAt(i + 1) === '_')) {
-      const marker = ch + ch;
-      const close = line.indexOf(marker, i + 2);
-      if (close < 0) {
-        frHlPush(out, 'punct', marker);
-        i += 2;
-        continue;
-      }
-      frHlPush(out, 'punct', marker);
-      frHlPush(out, 'type', line.slice(i + 2, close));
-      frHlPush(out, 'punct', marker);
-      i = close + 2;
-      continue;
-    }
-    let end = i + 1;
-    while (
-      end < line.length
-      && line.charAt(end) !== '`'
-      && line.charAt(end) !== '*'
-      && line.charAt(end) !== '_'
-    ) {
-      end += 1;
-    }
-    frHlPush(out, 'plain', line.slice(i, end));
-    i = end;
+    return perLine;
+  } catch (err) {
+    return frHighlightPlain(textLines);
   }
 }
 
-function frHlLineMd(line, state) {
-  const fence = /^ {0,3}(?:```|~~~)/;
-  if (state.fence) {
-    if (fence.test(line)) {
-      state.fence = false;
-      return [{ k: 'punct', v: line }];
-    }
-    return [{ k: 'comment', v: line }];
-  }
-  if (fence.test(line)) {
-    state.fence = true;
-    return [{ k: 'punct', v: line }];
-  }
-
-  const heading = /^( {0,3})(#{1,6}) /.exec(line);
-  if (heading) {
-    const out = [];
-    frHlPush(out, 'plain', heading[1]);
-    frHlPush(out, 'punct', heading[2]);
-    /* The heading keyword starts at the space right after the '#' run. */
-    frHlPush(out, 'keyword', line.slice(heading[1].length + heading[2].length));
-    return frHlFinish(out, line);
-  }
-
-  const bullet = /^( {0,3})([-*+]|\d{1,3}[.)]) /.exec(line);
-  if (bullet) {
-    const out = [];
-    frHlPush(out, 'plain', bullet[1]);
-    frHlPush(out, 'punct', bullet[2] + ' ');
-    frHlScanMdInline(out, line, bullet[0].length);
-    return frHlFinish(out, line);
-  }
-
-  const out = [];
-  frHlScanMdInline(out, line, 0);
-  return frHlFinish(out, line);
-}
-
-/* --------------------------------------------------------------------------
- * Hash-comment languages (Python, Ruby, shell, YAML, TOML, INI, ...)
- * -------------------------------------------------------------------------- */
-
-function frHlHashSpecial(ch) {
-  if (ch === '#' || ch === '"' || ch === "'" || ch === '.' || ch === '-') return true;
-  return frHlIsIdentStart(ch) || frHlIsDigit(ch);
-}
-
-function frHlLineHash(line) {
-  const out = [];
-  let i = 0;
-  while (i < line.length) {
-    const ch = line.charAt(i);
-    const next = i + 1 < line.length ? line.charAt(i + 1) : '';
-    if (ch === '#') {
-      frHlPush(out, 'comment', line.slice(i));
-      break;
-    }
-    if (ch === '"' || ch === "'") {
-      const end = frHlReadString(line, i, ch, true);
-      frHlPush(out, 'string', line.slice(i, end));
-      i = end;
-      continue;
-    }
-    if (frHlIsDigit(ch) || (ch === '.' && frHlIsDigit(next))) {
-      const end = frHlReadNumber(line, i);
-      frHlPush(out, 'number', line.slice(i, end));
-      i = end;
-      continue;
-    }
-    if (frHlIsIdentStart(ch)) {
-      const end = frHlReadIdent(line, i, true);
-      const word = line.slice(i, end);
-      if (FR_HL_HASH_KEYWORDS[word] === 1) frHlPush(out, 'keyword', word);
-      else if (line.charAt(end) === ':') frHlPush(out, 'attr', word);
-      else frHlPush(out, 'plain', word);
-      i = end;
-      continue;
-    }
-    let end = i + 1;
-    while (end < line.length && !frHlHashSpecial(line.charAt(end))) end += 1;
-    frHlPush(out, 'plain', line.slice(i, end));
-    i = end;
-  }
-  return frHlFinish(out, line);
-}
-
-/* --------------------------------------------------------------------------
- * SQL
- * -------------------------------------------------------------------------- */
-
-function frHlSqlSpecial(ch) {
-  if (ch === '"' || ch === "'" || ch === '`' || ch === '-' || ch === '/') return true;
-  if (frHlIsIdentStart(ch) || frHlIsDigit(ch)) return true;
-  return FR_HL_SQL_PUNCT.indexOf(ch) >= 0;
-}
-
-function frHlLineSql(line, state) {
-  const out = [];
-  let i = 0;
-
-  if (state.block === 'sql') {
-    const close = line.indexOf('*/');
-    if (close < 0) {
-      out.push({ k: 'comment', v: line });
-      return out;
-    }
-    frHlPush(out, 'comment', line.slice(0, close + 2));
-    state.block = '';
-    i = close + 2;
-  }
-
-  while (i < line.length) {
-    const ch = line.charAt(i);
-    const next = i + 1 < line.length ? line.charAt(i + 1) : '';
-    if (ch === '-' && next === '-') {
-      frHlPush(out, 'comment', line.slice(i));
-      break;
-    }
-    if (ch === '/' && next === '*') {
-      const close = line.indexOf('*/', i + 2);
-      if (close < 0) {
-        frHlPush(out, 'comment', line.slice(i));
-        state.block = 'sql';
-        break;
-      }
-      frHlPush(out, 'comment', line.slice(i, close + 2));
-      i = close + 2;
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === '`') {
-      const end = frHlReadString(line, i, ch, true);
-      frHlPush(out, 'string', line.slice(i, end));
-      i = end;
-      continue;
-    }
-    if (frHlIsDigit(ch) || (ch === '.' && frHlIsDigit(next))) {
-      const end = frHlReadNumber(line, i);
-      frHlPush(out, 'number', line.slice(i, end));
-      i = end;
-      continue;
-    }
-    if (frHlIsIdentStart(ch)) {
-      const end = frHlReadIdent(line, i, false);
-      const word = line.slice(i, end);
-      if (FR_HL_SQL_KEYWORDS[word.toUpperCase()] === 1) frHlPush(out, 'keyword', word);
-      else frHlPush(out, 'plain', word);
-      i = end;
-      continue;
-    }
-    if (FR_HL_SQL_PUNCT.indexOf(ch) >= 0) {
-      let end = i + 1;
-      while (end < line.length) {
-        const c = line.charAt(end);
-        if (FR_HL_SQL_PUNCT.indexOf(c) < 0) break;
-        if (c === '-' && line.charAt(end + 1) === '-') break;
-        if (c === '/' && line.charAt(end + 1) === '*') break;
-        end += 1;
-      }
-      frHlPush(out, 'punct', line.slice(i, end));
-      i = end;
-      continue;
-    }
-    let end = i + 1;
-    while (end < line.length && !frHlSqlSpecial(line.charAt(end))) end += 1;
-    frHlPush(out, 'plain', line.slice(i, end));
-    i = end;
-  }
-
-  return frHlFinish(out, line);
-}
-
-/* --------------------------------------------------------------------------
- * Unified diff
- * -------------------------------------------------------------------------- */
-
-function frHlLineDiff(line) {
-  if (/^(?:\+\+\+|---|@@)/.test(line)) return [{ k: 'keyword', v: line }];
-  const head = line.charAt(0);
-  if (head === '+') return [{ k: 'string', v: line }];
-  if (head === '-') return [{ k: 'comment', v: line }];
-  return [{ k: 'plain', v: line }];
-}
-
-/* --------------------------------------------------------------------------
- * Public entry points
- * -------------------------------------------------------------------------- */
-
-/* Lower-case the basename's extension and map it to a language id. */
+/* Lower-case the basename's extension and map it to a Prism language id. */
 function frDetectLanguage(path) {
   const source = path == null ? '' : String(path);
   const cut = Math.max(source.lastIndexOf('/'), source.lastIndexOf('\\'));
   const base = (cut >= 0 ? source.slice(cut + 1) : source).toLowerCase();
   const dot = base.lastIndexOf('.');
   const ext = dot >= 0 ? base.slice(dot + 1) : base;
-  const language = FR_HL_LANG_BY_EXT[ext];
-  return typeof language === 'string' ? language : 'plain';
-}
-
-/* One token array per input line (same order and length). */
-function frHighlightLines(lines, lang) {
-  const input = Array.isArray(lines) ? lines : [];
-  const key = typeof lang === 'string' ? lang.toLowerCase() : '';
-  const language = FR_HL_LANGS[key] === 1 ? key : 'plain';
-  const state = { block: '', fence: false };
-  const result = [];
-  for (let i = 0; i < input.length; i += 1) {
-    const line = input[i] == null ? '' : String(input[i]);
-    let tokens;
-    if (language === 'js') tokens = frHlLineJs(line, state);
-    else if (language === 'json') tokens = frHlLineJson(line);
-    else if (language === 'css') tokens = frHlLineCss(line, state);
-    else if (language === 'html') tokens = frHlLineHtml(line, state);
-    else if (language === 'md') tokens = frHlLineMd(line, state);
-    else if (language === 'hash') tokens = frHlLineHash(line);
-    else if (language === 'sql') tokens = frHlLineSql(line, state);
-    else if (language === 'diff') tokens = frHlLineDiff(line);
-    else tokens = [{ k: 'plain', v: line }];
-    result.push(tokens);
-  }
-  return result;
+  return Object.prototype.hasOwnProperty.call(FR_PRISM_LANG_BY_EXT, ext)
+    ? FR_PRISM_LANG_BY_EXT[ext]
+    : 'plain';
 }
 
 /* ==========================================================================

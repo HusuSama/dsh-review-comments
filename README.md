@@ -35,9 +35,11 @@ context marks, so browsing changes and writing comments stay out of each other's
 - **Recursive fuzzy search** — type any part of a name: `changesitems` finds
   `changes_items.tsx`; separators and missing characters do not matter. Results are ranked
   by match quality and grouped by folder. Skips `.git`/`.svn`/`.hg`/`node_modules`.
-- **Syntax highlighting** — JS/TS/JSX, JSON, CSS/SCSS/Less, HTML/XML/SVG/Vue, Markdown,
-  Python/Shell/YAML/TOML/INI/Dockerfile/Makefile, SQL, diff/patch; other suffixes fall back
-  to plain text. Long files (>5000 lines) render as plain text to stay responsive.
+- **Syntax highlighting** — grammar-based, powered by a vendored [Prism.js](https://prismjs.com)
+  1.30.0 (MIT, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)): JavaScript/TypeScript/
+  JSX/TSX, JSON, CSS/SCSS/Less, HTML/XML/SVG/Vue, Markdown, Python, Shell, YAML, TOML, INI,
+  SQL, diff/patch, Go, Rust, Java; other suffixes fall back to plain text. Long files
+  (>5000 lines) render as plain text to stay responsive.
 - **Git status** — added/untracked = green, modified/renamed = blue, deleted = red,
   conflicted = amber, both in the file tree (with A/M/D/R/U letters) and as per-line
   vertical bars in the file view. A **Changed only** switch lists just the project's
@@ -182,7 +184,9 @@ The search box is recursive and fuzzy:
 | Path | Purpose |
 | --- | --- |
 | `index.js` | host half: git status poller and status-file writer |
-| `src/client.core.js` | pure logic: paths, formatter, tokenizer, git/search helpers (unit tested) |
+| `src/client.core.js` | pure logic: paths, formatter, Prism adapter, git/search helpers (unit tested) |
+| `src/vendor/prism.min.js` | vendored PrismJS 1.30.0 (MIT), isolated from the host page globals |
+| `THIRD_PARTY_NOTICES.md` | third-party license texts |
 | `src/client.ui.js` | React UI (no JSX): file tree, search, file view, comment popover/cards, CSS |
 | `src/client.apply.js` | registrations: locale dictionaries, tab type, body slot, stylesheet |
 | `build.mjs` | concatenates the three sources into `client.js` (do not edit `client.js`) |
@@ -212,6 +216,11 @@ harness) to load it.
   reloading a different version of the file does not move existing cards.
 - Files are read page by page up to 20,000 lines; highlighting is skipped above 5,000 lines.
 - Search and git payloads are bounded as described above.
+
+## Credits
+
+Syntax highlighting is powered by [PrismJS](https://prismjs.com) 1.30.0, vendored under its
+MIT license. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the full text.
 
 ## License
 

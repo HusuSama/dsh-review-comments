@@ -33,9 +33,10 @@ Git 变更只作为上下文标记展示，浏览变更与写评论互不干扰�
 - **递归模糊搜索** —— 输入名字的任意片段即可：`changesitems` 能找到 `changes_items.tsx`，
   分隔符与跳字都不影响匹配；结果按匹配度排序并按目录分组。自动跳过
   `.git`/`.svn`/`.hg`/`node_modules`。
-- **语法高亮** —— JS/TS/JSX、JSON、CSS/SCSS/Less、HTML/XML/SVG/Vue、Markdown、
-  Python/Shell/YAML/TOML/INI/Dockerfile/Makefile、SQL、diff/patch；其他后缀回退纯文本。
-  超过 5000 行的长文件不做高亮以保证响应。
+- **语法高亮** —— 基于内置的 [Prism.js](https://prismjs.com) 1.30.0（MIT，见
+  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)）：JavaScript/TypeScript/JSX/TSX、JSON、
+  CSS/SCSS/Less、HTML/XML/SVG/Vue、Markdown、Python、Shell、YAML、TOML、INI、SQL、
+  diff/patch、Go、Rust、Java；其他后缀回退纯文本。超过 5000 行的长文件不做高亮以保证响应。
 - **Git 状态** —— 新增/未跟踪为绿色、修改/重命名为蓝色、删除为红色、冲突为橙色；文件树里带
   A/M/D/R/U 字母标记，文件内容里用行左侧竖线标记（新增绿/修改蓝/删除位置短红条）。
   「仅看变更」开关只列出当前项目未提交的变更文件。
@@ -167,7 +168,9 @@ Windows 为 `C:\\Users\\Public\\dsh-review-comments`）下的每会话 JSON；
 | 路径 | 作用 |
 | --- | --- |
 | `index.js` | Host 半侧：git 状态轮询与状态文件写入 |
-| `src/client.core.js` | 纯逻辑：路径、消息格式化、词法高亮、git/搜索工具（有单测） |
+| `src/client.core.js` | 纯逻辑：路径、消息格式化、Prism 适配器、git/搜索工具（有单测） |
+| `src/vendor/prism.min.js` | 内置 PrismJS 1.30.0（MIT），与宿主页面全局隔离 |
+| `THIRD_PARTY_NOTICES.md` | 第三方许可证文本 |
 | `src/client.ui.js` | React UI（无 JSX）：文件树、搜索、文件视图、评论输入框/卡片、CSS |
 | `src/client.apply.js` | 注册：语言词条、tab 类型、槽位组件、样式表 |
 | `build.mjs` | 把三个源文件拼成 `client.js`（不要手改 `client.js`） |
@@ -192,6 +195,11 @@ bundle 加载：改完 `index.js` 后在 **设置 → 插件** 里禁用再启�
 - 评论锚定在写入时显示的行号上；文件被编辑或刷新成另一版本后，已有卡片不会自动迁移。
 - 文件分页读取上限 20,000 行；超过 5,000 行不做语法高亮。
 - 搜索与 Git 数据有上文所述的上限。
+
+## 致谢
+
+语法高亮由 [PrismJS](https://prismjs.com) 1.30.0 提供（MIT 许可，已内置并在插件作用域内隔离）。
+完整许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 许可证
 

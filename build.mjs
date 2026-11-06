@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const ID = 'dsh-review-comments'
-const PARTS = ['src/client.core.js', 'src/client.ui.js', 'src/client.apply.js']
+const PARTS = ['src/vendor/prism.min.js', 'src/client.core.js', 'src/client.ui.js', 'src/client.apply.js']
 /**
  * Fixed OS-temp locations the Host writes git status JSON into and the browser half
  * reads back. Both halves must agree without knowing the package's install path, so

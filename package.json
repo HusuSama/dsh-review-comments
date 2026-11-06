@@ -42,11 +42,12 @@
     "cordis.patch.yml",
     "icon.svg",
     "locale/*.json",
-    "src/*.js",
     "build.mjs",
     "README.md",
     "README.zh.md",
-    "LICENSE"
+    "LICENSE",
+    "src",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "dsh": {
     "bundle": {

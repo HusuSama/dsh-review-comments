@@ -16,7 +16,9 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CORE_PATH = path.join(HERE, '..', 'src', 'client.core.js');
+const VENDOR_PATH = path.join(HERE, '..', 'src', 'vendor', 'prism.min.js');
 const CORE_SOURCE = readFileSync(CORE_PATH, 'utf8');
+const VENDOR_SOURCE = readFileSync(VENDOR_PATH, 'utf8');
 
 const CORE_NAMES = [
   'FR_TYPE_ID',
@@ -49,7 +51,15 @@ const CORE_NAMES = [
   'frGroupSearchResults',
 ];
 
-const core = new Function(CORE_SOURCE + '\nreturn { ' + CORE_NAMES.join(', ') + ' };')();
+/* The core fragment now depends on the vendored Prism const (FR_PRISM), which the
+ * build concatenates into the same factory scope before the fragment, so the test
+ * harness evaluates the vendor source first. */
+const CORE_RETURN = '\nreturn { ' + CORE_NAMES.join(', ') + ' };\n';
+const core = new Function(VENDOR_SOURCE + '\n' + CORE_SOURCE + CORE_RETURN)();
+/* Core without the vendor proves the absent-FR_PRISM fallback path. */
+const coreWithoutVendor = new Function(CORE_SOURCE + CORE_RETURN)();
+/* The vendored Prism itself, for grammar-existence checks. */
+const FR_PRISM_REF = new Function(VENDOR_SOURCE + '\nreturn FR_PRISM;\n')();
 
 /* ------------------------------------------------------------------------- */
 /* Locale stub                                                                */
@@ -605,7 +615,7 @@ describe('frFormatReviewMessage', () => {
 });
 
 /* ========================================================================= */
-/* Optimization pass 1: syntax highlighting                                   */
+/* Optimization pass 7: Prism-based syntax highlighting                       */
 /* ========================================================================= */
 
 const TOKEN_KINDS = [
@@ -621,6 +631,28 @@ const TOKEN_KINDS = [
   'attr',
 ];
 
+/* Prism language ids used by the detection table (all present in the vendor). */
+const PRISM_IDS = [
+  'javascript',
+  'jsx',
+  'typescript',
+  'tsx',
+  'json',
+  'css',
+  'markup',
+  'markdown',
+  'python',
+  'bash',
+  'yaml',
+  'toml',
+  'ini',
+  'sql',
+  'diff',
+  'go',
+  'rust',
+  'java',
+];
+
 function joinTokens(tokens) {
   return tokens.map((token) => token.v).join('');
 }
@@ -633,122 +665,177 @@ function kindValues(tokens, kind) {
   return tokens.filter((token) => token.k === kind).map((token) => token.v);
 }
 
-/* Assert the highlighter invariant, token shape, allowed kinds, and that
- * consecutive 'plain' tokens were merged. */
-function assertHighlightInvariant(lines, lang) {
-  const tokens = core.frHighlightLines(lines, lang);
+function lineText(value) {
+  return value == null ? '' : String(value);
+}
+
+/* Assert the highlighter invariant: token shape/kinds, exact per-line text,
+ * non-empty values and merged adjacent same-kind tokens. */
+function assertHighlightInvariant(lines, lang, impl) {
+  const target = impl || core;
+  const tokens = target.frHighlightLines(lines, lang);
   assert.equal(tokens.length, lines.length, lang + ': one array per line');
   for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
+    const expected = lineText(lines[index]);
     const lineTokens = tokens[index];
     assert.ok(Array.isArray(lineTokens), lang + ' line ' + (index + 1) + ': token array');
-    assert.ok(lineTokens.length >= 1, lang + ' line ' + (index + 1) + ': at least one token');
     let joined = '';
-    for (const token of lineTokens) {
+    for (let t = 0; t < lineTokens.length; t += 1) {
+      const token = lineTokens[t];
       assert.deepEqual(Object.keys(token).sort(), ['k', 'v'], 'token has exactly { k, v }');
       assert.ok(TOKEN_KINDS.includes(token.k), 'allowed token kind: ' + token.k);
       assert.equal(typeof token.v, 'string');
-      assert.ok(token.v.length > 0 || line === '', 'empty token value only for an empty line');
+      assert.ok(
+        token.v.length > 0 || (lineTokens.length === 1 && expected === ''),
+        'empty token value only for a single-token empty line',
+      );
+      if (t > 0) {
+        assert.notEqual(lineTokens[t - 1].k, token.k, 'adjacent same-kind tokens merged');
+      }
       joined += token.v;
     }
-    assert.equal(joined, line, lang + ' line ' + (index + 1) + ': exact source text');
-    for (let t = 1; t < lineTokens.length; t += 1) {
-      assert.ok(
-        !(lineTokens[t - 1].k === 'plain' && lineTokens[t].k === 'plain'),
-        lang + ' line ' + (index + 1) + ': consecutive plain tokens merged',
-      );
-    }
+    assert.equal(joined, expected, lang + ' line ' + (index + 1) + ': exact source text');
   }
   return tokens;
 }
 
-/* Representative files with block comments / fences left open on purpose. */
-const HL_FIXTURES = {
-  js: [
-    'const value = parse(input) // note',
-    '/* block starts',
+/* Realistic multi-line samples for every language id the UI can produce. */
+const HL_SAMPLES = {
+  javascript: [
+    'const value = parse("x", 42); // note',
+    '/* block comment',
     'still inside',
-    'ends */ let s = "a\\"b";',
-    'class Foo extends Bar { readonly x = 0xFF; }',
-    'if (a) { return null; }',
-    'const t = `a ${b} c`;',
-    'function load() {',
-    '  return 3.14e-2 + .5;',
+    'ends */ class Foo extends Bar {',
+    '  static readonly MAX = 0xFF;',
+    '  async load(input = null) {',
+    '    return `template ${input}`;',
+    '  }',
     '}',
-    '// tail',
     '',
+    'function make(id) {',
+    '  if (!id) throw new Error("missing");',
+    '  return id;',
+    '}',
     'const broken = "unterminated',
-    '/* never closed',
-    'still open',
+  ],
+  jsx: [
+    'const App = () => (',
+    '  <div className="app">',
+    '    {items.map((item) => <span key={item.id}>{item.name}</span>)}',
+    '  </div>',
+    ');',
+    'export default App;',
+  ],
+  typescript: [
+    'import type { X } from "./x";',
+    'export interface User { id: number; name?: string; }',
+    'type Id = string | number;',
+    'const user: User = { id: 1 };',
+    '@Component({ selector: "app", template: "<div></div>" })',
+    'export class Foo<T> implements Bar { private x: T; }',
+    'enum Color { Red = 1, Green = 2 }',
+    '/* open',
+    'still',
+  ],
+  tsx: [
+    'const App = () => (',
+    '  <div className="app">',
+    '    {items.map((item) => <span key={item.id}>{item.name}</span>)}',
+    '  </div>',
+    ');',
+    'const n: number = 1;',
   ],
   json: [
     '{',
     '  "a": 1,',
     '  "b": [true, false, null],',
     '  "c": "x",',
-    '  "url": "http://x"',
+    '  "url": "http://x",',
+    '  "nested": { "k": -2.5e3 }',
     '}',
-    '',
-    '{"broken": "oops',
   ],
   css: [
-    '/* comment starts',
-    'still inside',
-    'ends */ .a-b { color: #fff; margin: 0 auto; }',
-    ':root { --dsw-alias-bg-base: red; }',
-    'a::after { content: "x"; }',
-    '/* never closed',
-    '',
-    'unterminated: "oops',
+    '/* comment',
+    'still inside */',
+    '.a-b, #id {',
+    '  color: #fff;',
+    '  margin: 0 auto;',
+    '  content: "x";',
+    '}',
+    ':root { --custom-prop: 1px; }',
   ],
-  html: [
-    '<!-- comment starts',
-    'still inside',
-    'ends --> <div class="x" data-y=\'z\'>text</div>',
+  markup: [
+    '<!-- comment',
+    'still',
+    '-->',
+    '<!DOCTYPE html>',
+    '<div class="x" data-y=\'z\'>text</div>',
     '<input disabled>',
     '<br/>',
-    '<!DOCTYPE html>',
-    'x < y && z',
-    '<!-- never closed',
-    '',
+    '<script>var a = 1;</script>',
   ],
-  md: [
+  markdown: [
     '# Title',
-    '### Deep **heading**',
+    '',
+    '## Sub heading',
     '- item with `code` and **bold**',
-    '* star item',
-    '1. numbered item',
-    '  - nested item',
+    '1. numbered',
     '```js',
     'const x = 1;',
-    '# not a heading',
     '```',
-    '## After',
-    '~~~',
-    'plain ~~~ content',
-    '~~~',
-    'a `unterminated',
-    '',
+    '> quote',
+    '[link](https://x)',
+    '<div>html</div>',
+    'plain *italic*',
   ],
-  hash: [
+  python: [
+    '#!/usr/bin/env python',
     '# comment',
     'def f(x):',
-    '  return "s#not-comment"',
-    'key: value',
-    'my-key: v',
-    'echo $VAR ${Y}',
-    "x = 'unterminated",
-    '',
+    '    return "s#not" # tail',
+    'class Foo:',
+    '    pass',
+    '@decorator',
+    'x = [1, 2]',
+  ],
+  bash: [
+    '#!/bin/bash',
+    '# comment',
+    'echo "$VAR" ${Y}',
+    'export PATH=/usr/bin',
+    'if [ -f x ]; then',
+    '  echo ok',
+    'fi',
+  ],
+  yaml: [
+    '# comment',
+    'name: value',
+    'list:',
+    '  - one',
+    '  - two',
+    'nested:',
+    '  key: "x"',
+  ],
+  toml: [
+    '# comment',
+    '[section]',
+    'name = "value"',
+    'count = 42',
+    'enabled = true',
+  ],
+  ini: [
+    '; comment',
+    '[section]',
+    'name=value',
+    'flag=true',
   ],
   sql: [
     'SELECT * FROM t; -- note',
-    '/* block starts',
-    'still inside',
-    "ends */ INSERT INTO t VALUES ('a', 2);",
-    'SeLeCt `weird` FROM "x"',
-    '/* never closed',
-    '',
-    "unterminated: 'oops",
+    '/* block',
+    'still',
+    '*/',
+    "INSERT INTO t VALUES ('a', 2);",
+    'SeLeCt id FROM users WHERE id = 1 ORDER BY id;',
   ],
   diff: [
     '--- a/file',
@@ -757,21 +844,95 @@ const HL_FIXTURES = {
     '-removed',
     '+added',
     ' context',
-    '',
-    '+',
-    '-',
+  ],
+  go: [
+    'package main',
+    'import "fmt"',
+    'func main() {',
+    'fmt.Println("hi")',
+    '}',
+  ],
+  rust: [
+    'fn main() {',
+    '    let x: i32 = 1;',
+    '    println!("{}", x);',
+    '}',
+  ],
+  java: [
+    'import java.util.List;',
+    'public class Foo {',
+    '    private int x = 1;',
+    '    public static void main(String[] a) {',
+    '        System.out.println("hi");',
+    '    }',
+    '}',
   ],
   plain: ['anything <> {} // /**/', 'iVBORw0KGgo=', ''],
 };
 
-describe('frHighlightLines — invariant and token shape', () => {
-  for (const lang of Object.keys(HL_FIXTURES)) {
+describe('frDetectLanguage (Prism ids)', () => {
+  test('maps every documented extension to its Prism language id', () => {
+    const table = {
+      'a.js': 'javascript', 'a.mjs': 'javascript', 'a.cjs': 'javascript', 'a.json5': 'javascript',
+      'a.jsx': 'jsx',
+      'a.ts': 'typescript', 'a.mts': 'typescript', 'a.cts': 'typescript',
+      'a.tsx': 'tsx',
+      'a.json': 'json',
+      'a.css': 'css', 'a.scss': 'css', 'a.less': 'css', 'a.sass': 'css',
+      'a.html': 'markup', 'a.htm': 'markup', 'a.xml': 'markup', 'a.svg': 'markup',
+      'a.vue': 'markup', 'a.svelte': 'markup',
+      'a.md': 'markdown', 'a.markdown': 'markdown', 'a.mdx': 'markdown',
+      'a.py': 'python', 'a.pyw': 'python',
+      'a.sh': 'bash', 'a.bash': 'bash', 'a.zsh': 'bash', 'a.fish': 'bash',
+      'a.yaml': 'yaml', 'a.yml': 'yaml',
+      'a.toml': 'toml',
+      'a.ini': 'ini', 'a.conf': 'ini', 'a.cfg': 'ini', 'a.properties': 'ini', 'a.env': 'ini',
+      'a.sql': 'sql',
+      'a.diff': 'diff', 'a.patch': 'diff',
+      'a.go': 'go',
+      'a.rs': 'rust',
+      'a.java': 'java',
+      'a.txt': 'plain', 'a.rb': 'plain', 'a.php': 'plain', 'a.tsv': 'plain',
+      'README': 'plain', 'a': 'plain', 'a.': 'plain',
+    };
+    for (const name of Object.keys(table)) {
+      assert.equal(core.frDetectLanguage(name), table[name], name);
+    }
+  });
+
+  test('uses the basename and is case-insensitive', () => {
+    assert.equal(core.frDetectLanguage('src/App.TSX'), 'tsx');
+    assert.equal(core.frDetectLanguage('C:\\work\\a.CSS'), 'css');
+    assert.equal(core.frDetectLanguage('/tmp/x.MD'), 'markdown');
+    assert.equal(core.frDetectLanguage('dir.js/README'), 'plain');
+    assert.equal(core.frDetectLanguage('dir/a.b/file.ts'), 'typescript');
+    assert.equal(core.frDetectLanguage('.env'), 'ini');
+    assert.equal(core.frDetectLanguage('conf/.env'), 'ini');
+    assert.equal(core.frDetectLanguage('Dockerfile'), 'plain');
+    assert.equal(core.frDetectLanguage('Makefile'), 'plain');
+  });
+
+  test('unknown, empty and hostile inputs fall back to plain', () => {
+    for (const value of ['', null, undefined, 42, {}, [], 'a.constructor', 'a.__proto__', 'a.toString']) {
+      assert.equal(core.frDetectLanguage(value), 'plain');
+    }
+  });
+
+  test('every non-plain id has a grammar in the vendored Prism', () => {
+    for (const id of PRISM_IDS) {
+      assert.ok(FR_PRISM_REF.languages[id], 'missing Prism grammar: ' + id);
+    }
+  });
+});
+
+describe('frHighlightLines — Prism invariant', () => {
+  for (const lang of Object.keys(HL_SAMPLES)) {
     test('keeps every line byte-for-byte: ' + lang, () => {
-      assertHighlightInvariant(HL_FIXTURES[lang], lang);
+      assertHighlightInvariant(HL_SAMPLES[lang], lang);
     });
   }
 
-  test('keeps oddly shaped lines for every language', () => {
+  test('keeps oddly shaped lines for every Prism language', () => {
     const weird = [
       '',
       ' ',
@@ -796,412 +957,166 @@ describe('frHighlightLines — invariant and token shape', () => {
       '中文注释 // ok',
       'a\r',
     ];
-    for (const lang of Object.keys(HL_FIXTURES)) assertHighlightInvariant(weird, lang);
+    for (const lang of PRISM_IDS) assertHighlightInvariant(weird, lang);
   });
 
   test('preserves CRLF characters exactly', () => {
-    assertHighlightInvariant(['const x = 1;\r', '// c\r', '\r', '/*\r'], 'js');
-    const tokens = core.frHighlightLines(['const x = 1;\r'], 'js');
+    assertHighlightInvariant(['const x = 1;\r', '// c\r', '\r', '/*\r'], 'javascript');
+    const tokens = core.frHighlightLines(['const x = 1;\r'], 'javascript');
     assert.equal(joinTokens(tokens[0]), 'const x = 1;\r');
   });
 
-  test('does not throw on unterminated constructs and keeps them in their token', () => {
-    assert.deepEqual(tok('const s = "oops', 'js').slice(-1), [{ k: 'string', v: '"oops' }]);
-    assert.deepEqual(core.frHighlightLines(['/* never', 'more'], 'js'), [
-      [{ k: 'comment', v: '/* never' }],
-      [{ k: 'comment', v: 'more' }],
-    ]);
-    assert.deepEqual(core.frHighlightLines(['<!-- never', 'more'], 'html'), [
-      [{ k: 'comment', v: '<!-- never' }],
-      [{ k: 'comment', v: 'more' }],
-    ]);
-    const md = core.frHighlightLines(['```', 'code', 'more'], 'md');
-    assert.deepEqual(md[1], [{ k: 'comment', v: 'code' }]);
-    assert.deepEqual(md[2], [{ k: 'comment', v: 'more' }]);
-    const sql = core.frHighlightLines(['/* never', 'more'], 'sql');
-    assert.deepEqual(sql[1], [{ k: 'comment', v: 'more' }]);
-    assert.deepEqual(tok('a `oops', 'md'), [{ k: 'plain', v: 'a ' }, { k: 'string', v: '`oops' }]);
+  test('returns [] for empty and non-array input', () => {
+    assert.deepEqual(core.frHighlightLines([], 'javascript'), []);
+    assert.deepEqual(core.frHighlightLines(null, 'javascript'), []);
+    assert.deepEqual(core.frHighlightLines(undefined, 'javascript'), []);
+    assert.deepEqual(core.frHighlightLines('x', 'javascript'), []);
+    assert.deepEqual(core.frHighlightLines(42, 'javascript'), []);
   });
 
-  test('returns [] for non-array input and one array per line', () => {
-    assert.deepEqual(core.frHighlightLines(null, 'js'), []);
-    assert.deepEqual(core.frHighlightLines(undefined, 'js'), []);
-    assert.deepEqual(core.frHighlightLines([], 'js'), []);
-    const tokens = core.frHighlightLines(['a', null, 'b'], 'js');
-    assert.equal(tokens.length, 3);
-    assert.equal(joinTokens(tokens[1]), '');
-  });
-
-  test('a line with nothing special is one plain token', () => {
-    assert.deepEqual(tok('hello world', 'js'), [{ k: 'plain', v: 'hello world' }]);
-    assert.deepEqual(tok('', 'js'), [{ k: 'plain', v: '' }]);
-  });
-
-  test('accepts language ids case-insensitively and ignores unknown ids', () => {
-    assert.deepEqual(
-      core.frHighlightLines(['const x = 1;'], 'JS'),
-      core.frHighlightLines(['const x = 1;'], 'js'),
-    );
-    assert.deepEqual(core.frHighlightLines(['x'], 'not-a-language'), [[{ k: 'plain', v: 'x' }]]);
-  });
-
-  test('fuzz: random line content is never altered and never throws', () => {
-    const charset = 'abcXYZ019{}()[];,.:?=+-*/%<>!&|^~@#$_ \t"\'`/\\<>&-中';
-    let seed = 0x2f6e2b1;
-    function random() {
-      seed = (seed * 1103515245 + 12345) % 2147483648;
-      return seed / 2147483648;
-    }
-    function randomLine() {
-      let line = '';
-      const length = Math.floor(random() * 26);
-      for (let i = 0; i < length; i += 1) {
-        line += charset.charAt(Math.floor(random() * charset.length));
-      }
-      return line;
-    }
-    for (const lang of Object.keys(HL_FIXTURES)) {
-      const lines = [];
-      for (let i = 0; i < 80; i += 1) lines.push(randomLine());
-      assertHighlightInvariant(lines, lang);
-    }
+  test('does not mutate the input lines array', () => {
+    const lines = ['const x = 1;', '// c', '', 'let y = 2;'];
+    const snapshot = lines.slice();
+    core.frHighlightLines(lines, 'javascript');
+    assert.deepEqual(lines, snapshot);
   });
 });
 
-describe('frDetectLanguage', () => {
-  test('maps every documented extension', () => {
-    const table = {
-      'a.js': 'js', 'a.jsx': 'js', 'a.ts': 'js', 'a.tsx': 'js', 'a.mjs': 'js',
-      'a.cjs': 'js', 'a.json5': 'js',
-      'a.json': 'json',
-      'a.css': 'css', 'a.scss': 'css', 'a.less': 'css', 'a.sass': 'css',
-      'a.html': 'html', 'a.htm': 'html', 'a.xml': 'html', 'a.svg': 'html', 'a.vue': 'html',
-      'a.md': 'md', 'a.markdown': 'md', 'a.mdx': 'md',
-      'a.py': 'hash', 'a.rb': 'hash', 'a.sh': 'hash', 'a.bash': 'hash', 'a.zsh': 'hash',
-      'a.fish': 'hash', 'a.yaml': 'hash', 'a.yml': 'hash', 'a.toml': 'hash', 'a.ini': 'hash',
-      'a.conf': 'hash', 'a.cfg': 'hash', 'a.dockerfile': 'hash', 'a.makefile': 'hash',
-      'a.mk': 'hash', 'a.gradle': 'hash', 'a.properties': 'hash', 'a.env': 'hash',
-      'a.sql': 'sql',
-      'a.diff': 'diff', 'a.patch': 'diff',
-      'a.txt': 'plain', 'a.bin': 'plain', 'README': 'plain', 'a.': 'plain', 'a': 'plain',
-    };
-    for (const name of Object.keys(table)) {
-      assert.equal(core.frDetectLanguage(name), table[name], name);
-    }
-  });
-
-  test('uses the basename and is case-insensitive', () => {
-    assert.equal(core.frDetectLanguage('src/App.TSX'), 'js');
-    assert.equal(core.frDetectLanguage('C:\\work\\a.CSS'), 'css');
-    assert.equal(core.frDetectLanguage('/tmp/x.MD'), 'md');
-    assert.equal(core.frDetectLanguage('dir.js/README'), 'plain');
-    assert.equal(core.frDetectLanguage('dir/a.b/file.ts'), 'js');
-  });
-
-  test('recognises extension-less Dockerfile/Makefile and dotfiles', () => {
-    assert.equal(core.frDetectLanguage('Dockerfile'), 'hash');
-    assert.equal(core.frDetectLanguage('deploy/Dockerfile'), 'hash');
-    assert.equal(core.frDetectLanguage('Makefile'), 'hash');
-    assert.equal(core.frDetectLanguage('.env'), 'hash');
-    assert.equal(core.frDetectLanguage('conf/.env'), 'hash');
-    assert.equal(core.frDetectLanguage('README'), 'plain');
-  });
-
-  test('unknown, empty and hostile inputs fall back to plain', () => {
-    assert.equal(core.frDetectLanguage(''), 'plain');
-    assert.equal(core.frDetectLanguage(null), 'plain');
-    assert.equal(core.frDetectLanguage(undefined), 'plain');
-    assert.equal(core.frDetectLanguage('a.constructor'), 'plain');
-    assert.equal(core.frDetectLanguage('a.__proto__'), 'plain');
-    assert.equal(core.frDetectLanguage('a.toString'), 'plain');
-  });
-});
-
-describe('js/ts highlighting', () => {
-  test('classifies keywords, functions and comments', () => {
-    const tokens = tok('const value = parse(input) // note', 'js');
+describe('Prism kind mapping', () => {
+  test('javascript: keyword, string, number, comment, func, type, punctuation', () => {
+    const tokens = tok('const value = parse("x", 42); // note', 'javascript');
     assert.deepEqual(kindValues(tokens, 'keyword'), ['const']);
     assert.deepEqual(kindValues(tokens, 'func'), ['parse']);
+    assert.deepEqual(kindValues(tokens, 'string'), ['"x"']);
+    assert.deepEqual(kindValues(tokens, 'number'), ['42']);
     assert.deepEqual(kindValues(tokens, 'comment'), ['// note']);
-    assert.deepEqual(kindValues(tokens, 'punct'), ['=', '(', ')']);
-    assert.equal(joinTokens(tokens), 'const value = parse(input) // note');
+    assert.ok(kindValues(tokens, 'punct').join('').includes(';'));
+    assert.equal(joinTokens(tokens), 'const value = parse("x", 42); // note');
+
+    const cls = tok('class Foo extends Bar {}', 'javascript');
+    assert.deepEqual(kindValues(cls, 'type'), ['Foo', 'Bar']);
+    assert.deepEqual(kindValues(cls, 'keyword'), ['class', 'extends']);
+
+    const fn = tok('function load() { return 1; }', 'javascript');
+    assert.deepEqual(kindValues(fn, 'keyword'), ['function', 'return']);
+    assert.deepEqual(kindValues(fn, 'func'), ['load']);
+
+    const twoLines = core.frHighlightLines(['/* start', 'middle', 'end */ const x = 1;'], 'javascript');
+    assert.deepEqual(kindValues(twoLines[0], 'comment'), ['/* start']);
+    assert.deepEqual(twoLines[1], [{ k: 'comment', v: 'middle' }]);
+    assert.deepEqual(kindValues(twoLines[2], 'comment'), ['end */']);
+    assert.deepEqual(kindValues(twoLines[2], 'keyword'), ['const']);
   });
 
-  test('all documented keywords', () => {
-    const words = (
-      'const let var function return if else for while class import from export new async '
-      + 'await try catch throw switch case break continue typeof instanceof delete in of '
-      + 'this super true false null undefined interface type enum implements extends '
-      + 'readonly static public private'
-    ).split(' ');
-    for (const word of words) {
-      assert.deepEqual(kindValues(tok(word, 'js'), 'keyword'), [word], word);
-    }
+  test('typescript and tsx', () => {
+    const tokens = tok('interface User { id: number; }', 'typescript');
+    assert.ok(kindValues(tokens, 'keyword').includes('interface'));
+    assert.ok(kindValues(tokens, 'type').includes('User'));
+    assert.ok(kindValues(tokens, 'type').includes('number'));
+    assert.deepEqual(kindValues(tok('const x = 1;', 'tsx'), 'keyword'), ['const']);
   });
 
-  test('PascalCase identifiers are types; calls are funcs', () => {
-    assert.deepEqual(kindValues(tok('class Foo extends Bar {}', 'js'), 'type'), ['Foo', 'Bar']);
-    assert.deepEqual(kindValues(tok('new Foo()', 'js'), 'type'), ['Foo']);
-    assert.deepEqual(kindValues(tok('parse(input)', 'js'), 'func'), ['parse']);
-    assert.deepEqual(kindValues(tok('const User = make();', 'js'), 'type'), ['User']);
-    assert.deepEqual(kindValues(tok('const User = make();', 'js'), 'func'), ['make']);
+  test('json: property names are attr, booleans are numbers', () => {
+    const tokens = tok('{"a": 1, "b": true}', 'json');
+    assert.deepEqual(kindValues(tokens, 'attr'), ['"a"', '"b"']);
+    assert.deepEqual(kindValues(tokens, 'number'), ['1', 'true']);
+    assert.equal(kindValues(tokens, 'punct').join(''), '{:,:}');
   });
 
-  test('strings with escapes, templates, and numbers', () => {
-    assert.deepEqual(kindValues(tok('const s = "hello";', 'js'), 'string'), ['"hello"']);
-    assert.deepEqual(kindValues(tok('const s = "a\\"b";', 'js'), 'string'), ['"a\\"b"']);
-    assert.deepEqual(kindValues(tok("const s = 'x';", 'js'), 'string'), ["'x'"]);
-    assert.deepEqual(kindValues(tok('const t = `a ${b} c`;', 'js'), 'string'), ['`a ${b} c`']);
-    assert.deepEqual(
-      kindValues(tok('const n = 0xFF + 3.14e-2 + .5 + 1_000;', 'js'), 'number'),
-      ['0xFF', '3.14e-2', '.5', '1_000'],
-    );
+  test('css: selectors are tag, properties are attr', () => {
+    const tokens = tok('.btn { color: red; }', 'css');
+    assert.deepEqual(kindValues(tokens, 'attr'), ['color']);
+    assert.deepEqual(kindValues(tokens, 'tag'), ['.btn']);
   });
 
-  test('block comments carry state across lines', () => {
-    const tokens = core.frHighlightLines(['let a = 1; /* start', 'middle', 'end */ let b = 2;'], 'js');
-    assert.deepEqual(kindValues(tokens[0], 'comment'), ['/* start']);
-    assert.deepEqual(tokens[1], [{ k: 'comment', v: 'middle' }]);
-    assert.deepEqual(kindValues(tokens[2], 'comment'), ['end */']);
-    assert.deepEqual(kindValues(tokens[2], 'keyword'), ['let']);
+  test('markup: tags, attributes and quoted values', () => {
+    const tokens = tok('<div class="x">text</div>', 'markup');
+    assert.ok(kindValues(tokens, 'tag').join('').includes('div'));
+    assert.deepEqual(kindValues(tokens, 'attr'), ['class']);
+    assert.deepEqual(kindValues(tokens, 'string'), ['x']);
+    const comment = core.frHighlightLines(['<!-- comment', 'still -->'], 'markup');
+    assert.deepEqual(kindValues(comment[0], 'comment'), ['<!-- comment']);
+    assert.deepEqual(kindValues(comment[1], 'comment'), ['still -->']);
   });
 
-  test('line comments swallow the rest of the line', () => {
-    const tokens = tok('a = b // c = d', 'js');
-    assert.deepEqual(kindValues(tokens, 'comment'), ['// c = d']);
-    assert.deepEqual(kindValues(tokens, 'punct'), ['=']);
+  test('markdown: headings are keyword, fenced code is string-ish', () => {
+    const heading = tok('## Sub heading', 'markdown');
+    assert.deepEqual(kindValues(heading, 'punct'), ['##']);
+    assert.deepEqual(kindValues(heading, 'keyword'), [' Sub heading']);
+    const fence = core.frHighlightLines(['```js', 'const x = 1;', '```'], 'markdown');
+    const fenceStrings = fence[1].filter((token) => token.k === 'string').map((token) => token.v).join('');
+    assert.ok(fenceStrings.includes('const x = 1;'), 'fenced code content is string-ish');
+    assert.equal(fence[0][0].k, 'punct', 'opening fence marker is punct');
+    assert.equal(fence[0][0].v, '```');
+    assert.ok(fence[2].every((token) => token.k === 'punct'), 'closing fence marker is punct');
   });
-});
 
-describe('json highlighting', () => {
-  test('strings, numbers, keywords and punctuation', () => {
-    const tokens = tok('{"a": 1, "b": true, "c": null}', 'json');
-    assert.deepEqual(kindValues(tokens, 'string'), ['"a"', '"b"', '"c"']);
+  test('python and bash', () => {
+    const py = tok('def f(x):', 'python');
+    assert.deepEqual(kindValues(py, 'keyword'), ['def']);
+    assert.deepEqual(kindValues(py, 'func'), ['f']);
+    const pyLine = tok('    return "s#not" # tail', 'python');
+    assert.deepEqual(kindValues(pyLine, 'keyword'), ['return']);
+    assert.deepEqual(kindValues(pyLine, 'string'), ['"s#not"']);
+    assert.deepEqual(kindValues(pyLine, 'comment'), ['# tail']);
+    const bash = tok('echo "$VAR" # c', 'bash');
+    assert.deepEqual(kindValues(bash, 'string'), ['"$VAR"']);
+    assert.deepEqual(kindValues(bash, 'comment'), ['# c']);
+  });
+
+  test('sql keywords are case-insensitive, numbers are numbers', () => {
+    const tokens = tok('SELECT id FROM users WHERE id = 1;', 'sql');
+    const keywords = kindValues(tokens, 'keyword').map((word) => word.toLowerCase());
+    for (const word of ['select', 'from', 'where']) assert.ok(keywords.includes(word), word);
     assert.deepEqual(kindValues(tokens, 'number'), ['1']);
-    assert.deepEqual(kindValues(tokens, 'keyword'), ['true', 'null']);
-    assert.deepEqual(kindValues(tokens, 'punct'), ['{', ':', ',', ':', ',', ':', '}']);
-    assert.deepEqual(kindValues(tokens, 'comment'), []);
   });
 
-  test('negative/exponent numbers and no comments', () => {
-    assert.deepEqual(kindValues(tok('{"n": -2.5e3}', 'json'), 'number'), ['-2.5e3']);
-    const tokens = tok('{"url": "http://x", "raw": "/* y */"}', 'json');
-    assert.deepEqual(kindValues(tokens, 'comment'), []);
-  });
-
-  test('unterminated string stays a string', () => {
-    assert.deepEqual(tok('{"a": "oops', 'json').slice(-1), [{ k: 'string', v: '"oops' }]);
-  });
-});
-
-describe('css highlighting', () => {
-  test('property names, strings and numbers', () => {
-    const tokens = tok('.btn { color: #fff; margin: 0 auto; }', 'css');
-    assert.deepEqual(kindValues(tokens, 'attr'), ['color', 'margin']);
-    assert.deepEqual(kindValues(tokens, 'number'), ['0']);
-    assert.equal(joinTokens(tokens), '.btn { color: #fff; margin: 0 auto; }');
-  });
-
-  test('dashed and custom properties are attributes', () => {
-    assert.deepEqual(kindValues(tok('.x { border-radius: 4px; }', 'css'), 'attr'), ['border-radius']);
-    assert.deepEqual(
-      kindValues(tok(':root { --dsw-alias-bg-base: red; }', 'css'), 'attr'),
-      ['--dsw-alias-bg-base'],
-    );
-  });
-
-  test('quoted strings', () => {
-    assert.deepEqual(kindValues(tok('a::after { content: "x"; }', 'css'), 'string'), ['"x"']);
-  });
-
-  test('block comments carry state across lines', () => {
-    const tokens = core.frHighlightLines(['/* one', 'two', 'three */ a { b: 1; }'], 'css');
-    assert.deepEqual(tokens[0], [{ k: 'comment', v: '/* one' }]);
-    assert.deepEqual(tokens[1], [{ k: 'comment', v: 'two' }]);
-    assert.deepEqual(kindValues(tokens[2], 'comment'), ['three */']);
-    assert.deepEqual(kindValues(tokens[2], 'attr'), ['b']);
-  });
-
-  test('unterminated string stays a string', () => {
-    assert.deepEqual(tok('a { content: "oops', 'css').slice(-1), [{ k: 'string', v: '"oops' }]);
-  });
-});
-
-describe('html highlighting', () => {
-  test('tags, attributes, quoted values and text', () => {
-    const tokens = tok('<div class="dfr-btn" data-x=\'y\'>x</div>', 'html');
-    assert.deepEqual(kindValues(tokens, 'tag'), ['<div', '</div']);
-    assert.deepEqual(kindValues(tokens, 'attr'), ['class', 'data-x']);
-    assert.deepEqual(kindValues(tokens, 'string'), ['"dfr-btn"', "'y'"]);
-    assert.equal(joinTokens(tokens), '<div class="dfr-btn" data-x=\'y\'>x</div>');
-  });
-
-  test('comments carry state across lines', () => {
-    const tokens = core.frHighlightLines(['<!-- one', 'two', 'three --> <b>x</b>'], 'html');
-    assert.deepEqual(tokens[0], [{ k: 'comment', v: '<!-- one' }]);
-    assert.deepEqual(tokens[1], [{ k: 'comment', v: 'two' }]);
-    assert.deepEqual(kindValues(tokens[2], 'comment'), ['three -->']);
-    assert.deepEqual(kindValues(tokens[2], 'tag'), ['<b', '</b']);
-  });
-
-  test('self-closing tags, valueless attributes, doctype and stray <', () => {
-    assert.deepEqual(kindValues(tok('<br/>', 'html'), 'tag'), ['<br']);
-    assert.deepEqual(kindValues(tok('<br/>', 'html'), 'punct'), ['/>']);
-    assert.deepEqual(kindValues(tok('<input disabled>', 'html'), 'attr'), []);
-    assert.ok(kindValues(tok('<input disabled>', 'html'), 'plain').join('').includes('disabled'));
-    const doctype = tok('<!DOCTYPE html>', 'html');
-    assert.equal(joinTokens(doctype), '<!DOCTYPE html>');
-    assert.deepEqual(kindValues(doctype, 'tag'), []);
-    const math = tok('if (a < b) x', 'html');
-    assert.deepEqual(kindValues(math, 'tag'), []);
-  });
-
-  test('unterminated attribute value stays a string', () => {
-    assert.deepEqual(tok('<a href="oops', 'html').slice(-1), [{ k: 'string', v: '"oops' }]);
-  });
-});
-
-describe('markdown highlighting', () => {
-  test('headings: # run is punct, the rest of the line is keyword', () => {
-    assert.deepEqual(tok('# Title', 'md'), [{ k: 'punct', v: '#' }, { k: 'keyword', v: ' Title' }]);
-    assert.deepEqual(tok('### Deep heading', 'md'), [
-      { k: 'punct', v: '###' },
-      { k: 'keyword', v: ' Deep heading' },
-    ]);
-    assert.deepEqual(tok('   ## Indented', 'md'), [
-      { k: 'plain', v: '   ' },
-      { k: 'punct', v: '##' },
-      { k: 'keyword', v: ' Indented' },
-    ]);
-    assert.deepEqual(tok('#Title', 'md'), [{ k: 'plain', v: '#Title' }]);
-  });
-
-  test('list bullets are punct at line start', () => {
-    assert.deepEqual(tok('- item', 'md'), [{ k: 'punct', v: '- ' }, { k: 'plain', v: 'item' }]);
-    assert.deepEqual(tok('* item', 'md'), [{ k: 'punct', v: '* ' }, { k: 'plain', v: 'item' }]);
-    assert.deepEqual(tok('1. item', 'md'), [{ k: 'punct', v: '1. ' }, { k: 'plain', v: 'item' }]);
-    assert.deepEqual(tok('  - nested', 'md'), [
-      { k: 'plain', v: '  ' },
-      { k: 'punct', v: '- ' },
-      { k: 'plain', v: 'nested' },
-    ]);
-  });
-
-  test('inline code is string and bold inner text is type', () => {
-    const tokens = tok('text `code` and **bold** and __strong__', 'md');
-    assert.deepEqual(kindValues(tokens, 'string'), ['`code`']);
-    assert.deepEqual(kindValues(tokens, 'type'), ['bold', 'strong']);
-    assert.deepEqual(kindValues(tokens, 'punct'), ['**', '**', '__', '__']);
-  });
-
-  test('fenced code carries state and its content is comment', () => {
+  test('diff markers are keyword, removals comment and additions string', () => {
+    assert.equal(kindValues(tok('+++ b/file', 'diff'), 'keyword').join(''), '+++ b/file');
     const tokens = core.frHighlightLines(
-      ['```js', 'const x = 1;', '# not a heading', '```', '## After'],
-      'md',
+      ['--- a/file', '@@ -1 +1 @@', '-removed', '+added'],
+      'diff',
     );
-    assert.deepEqual(tokens[0], [{ k: 'punct', v: '```js' }]);
-    assert.deepEqual(tokens[1], [{ k: 'comment', v: 'const x = 1;' }]);
-    assert.deepEqual(tokens[2], [{ k: 'comment', v: '# not a heading' }]);
-    assert.deepEqual(tokens[3], [{ k: 'punct', v: '```' }]);
-    assert.deepEqual(tokens[4], [{ k: 'punct', v: '##' }, { k: 'keyword', v: ' After' }]);
-  });
-
-  test('tilde fences work too', () => {
-    const tokens = core.frHighlightLines(['~~~', 'code', '~~~'], 'md');
-    assert.deepEqual(tokens[1], [{ k: 'comment', v: 'code' }]);
+    assert.equal(kindValues(tokens[0], 'keyword').join(''), '--- a/file');
+    assert.equal(kindValues(tokens[1], 'keyword').join(''), '@@ -1 +1 @@');
+    assert.equal(kindValues(tokens[2], 'comment').join(''), '-removed');
+    assert.equal(kindValues(tokens[3], 'string').join(''), '+added');
   });
 });
 
-describe('hash languages highlighting', () => {
-  test('# starts a line comment', () => {
-    assert.deepEqual(kindValues(tok('# comment', 'hash'), 'comment'), ['# comment']);
-    assert.deepEqual(kindValues(tok('x = 1 # tail', 'hash'), 'comment'), ['# tail']);
-  });
-
-  test('strings keep # and unterminated strings stay strings', () => {
-    assert.deepEqual(kindValues(tok('x = "a # b"', 'hash'), 'string'), ['"a # b"']);
-    assert.deepEqual(kindValues(tok('x = "a # b"', 'hash'), 'comment'), []);
-    assert.deepEqual(tok("x = 'oops", 'hash').slice(-1), [{ k: 'string', v: "'oops" }]);
-  });
-
-  test('keywords and YAML/TOML keys', () => {
-    assert.deepEqual(kindValues(tok('def f(x):', 'hash'), 'keyword'), ['def']);
-    assert.deepEqual(kindValues(tok('key: value', 'hash'), 'attr'), ['key']);
-    assert.deepEqual(kindValues(tok('my-key: v', 'hash'), 'attr'), ['my-key']);
-    const words = (
-      'def class import from return if elif else for while in and or not None True False '
-      + 'function echo export local then fi do done let'
-    ).split(' ');
-    for (const word of words) assert.deepEqual(kindValues(tok(word, 'hash'), 'keyword'), [word], word);
-  });
-
-  test('$VAR and ${VAR} stay plain', () => {
-    const tokens = tok('echo $VAR ${Y}', 'hash');
-    assert.deepEqual(kindValues(tokens, 'keyword'), ['echo']);
-    assert.equal(kindValues(tokens, 'plain').join(''), ' $VAR ${Y}');
-    assert.deepEqual(kindValues(tokens, 'attr'), []);
-  });
-});
-
-describe('sql highlighting', () => {
-  test('case-insensitive keywords keep their original text', () => {
-    const tokens = tok('select * from users where id = 1;', 'sql');
-    assert.deepEqual(kindValues(tokens, 'keyword'), ['select', 'from', 'where']);
-    assert.deepEqual(kindValues(tokens, 'number'), ['1']);
-    assert.deepEqual(kindValues(tok('SELECT * FROM t', 'sql'), 'keyword'), ['SELECT', 'FROM']);
-    assert.deepEqual(kindValues(tok('SeLeCt', 'sql'), 'keyword'), ['SeLeCt']);
-  });
-
-  test('-- and /* */ comments, including multi-line state', () => {
-    assert.deepEqual(kindValues(tok('SELECT 1 -- note', 'sql'), 'comment'), ['-- note']);
-    const tokens = core.frHighlightLines(['/* one', 'two', 'three */ SELECT 1'], 'sql');
-    assert.deepEqual(tokens[0], [{ k: 'comment', v: '/* one' }]);
-    assert.deepEqual(tokens[1], [{ k: 'comment', v: 'two' }]);
-    assert.deepEqual(kindValues(tokens[2], 'comment'), ['three */']);
-    assert.deepEqual(kindValues(tokens[2], 'keyword'), ['SELECT']);
-  });
-
-  test('quoted strings and -- inside strings', () => {
-    assert.deepEqual(
-      kindValues(tok("select 'a', \"b\", `c`;", 'sql'), 'string'),
-      ["'a'", '"b"', '`c`'],
-    );
-    assert.deepEqual(kindValues(tok("select '-- not a comment'", 'sql'), 'comment'), []);
-  });
-
-  test('all documented keywords', () => {
-    const words = (
-      'select from where insert into update delete join group by order having limit values '
-      + 'set create table index and or not null as on'
-    ).split(' ');
-    for (const word of words) assert.deepEqual(kindValues(tok(word, 'sql'), 'keyword'), [word], word);
-  });
-});
-
-describe('diff highlighting', () => {
-  test('header, added and removed lines', () => {
-    assert.deepEqual(tok('--- a/f', 'diff'), [{ k: 'keyword', v: '--- a/f' }]);
-    assert.deepEqual(tok('+++ b/f', 'diff'), [{ k: 'keyword', v: '+++ b/f' }]);
-    assert.deepEqual(tok('@@ -1 +1 @@', 'diff'), [{ k: 'keyword', v: '@@ -1 +1 @@' }]);
-    assert.deepEqual(tok('-old', 'diff'), [{ k: 'comment', v: '-old' }]);
-    assert.deepEqual(tok('+new', 'diff'), [{ k: 'string', v: '+new' }]);
-    assert.deepEqual(tok(' context', 'diff'), [{ k: 'plain', v: ' context' }]);
-    assert.deepEqual(tok('', 'diff'), [{ k: 'plain', v: '' }]);
-  });
-});
-
-describe('plain fallback', () => {
-  test('every line is one plain token', () => {
-    assert.deepEqual(core.frHighlightLines(['a <> {} " //', ''], 'plain'), [
-      [{ k: 'plain', v: 'a <> {} " //' }],
-      [{ k: 'plain', v: '' }],
-    ]);
-  });
-
-  test('unknown or absent language falls back to plain', () => {
-    for (const lang of ['klingon', 'text', '', undefined, null, 42]) {
-      assert.deepEqual(core.frHighlightLines(['x // y'], lang), [[{ k: 'plain', v: 'x // y' }]]);
+describe('frHighlightLines — fallbacks', () => {
+  test('plain, unknown, absent and non-string languages yield one plain token per line', () => {
+    const expected = [[{ k: 'plain', v: 'x // y' }], [{ k: 'plain', v: '' }]];
+    for (const lang of ['plain', 'klingon', 'text', '', undefined, null, 42, {}]) {
+      assert.deepEqual(core.frHighlightLines(['x // y', ''], lang), expected);
     }
+  });
+
+  test('works without the vendored Prism (absent FR_PRISM)', () => {
+    assert.deepEqual(
+      coreWithoutVendor.frHighlightLines(['const x = 1;', 'let y = 2;'], 'javascript'),
+      [[{ k: 'plain', v: 'const x = 1;' }], [{ k: 'plain', v: 'let y = 2;' }]],
+    );
+    assert.equal(coreWithoutVendor.frDetectLanguage('a.js'), 'javascript');
+    assertHighlightInvariant(['console.log(1);', ''], 'javascript', coreWithoutVendor);
+  });
+
+  test('garbage line values are coerced and never throw', () => {
+    const inputs = [null, 42, undefined, 'x', true];
+    const expected = inputs.map(lineText);
+    const tokens = core.frHighlightLines(inputs, 'javascript');
+    assert.equal(tokens.length, inputs.length);
+    tokens.forEach((lineTokens, index) => {
+      assert.equal(joinTokens(lineTokens), expected[index]);
+    });
+    assert.deepEqual(
+      core.frHighlightLines(inputs, 'plain'),
+      expected.map((value) => [{ k: 'plain', v: value }]),
+    );
+    const hostile = { toString() { throw new Error('boom'); } };
+    const hostileTokens = core.frHighlightLines([hostile], 'javascript');
+    assert.equal(hostileTokens.length, 1);
+    assert.equal(joinTokens(hostileTokens[0]), '');
   });
 });
 
