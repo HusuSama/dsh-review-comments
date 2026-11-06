@@ -1883,13 +1883,14 @@ function frCreateBody(api) {
       const value = Array.isArray(next) ? next : [];
       commentsRef.current = value;
       setCommentsState(value);
-      frPublishComments(sessionId, value);
-    }, [sessionId]);
+    }, []);
 
     // Pending comments are represented by atomic quote cards in the chat composer.
     // This effect keeps the two lists in sync: missing cards are inserted, cards removed
     // in the composer (or dispatched with a send) drop their comments, and a persisted
-    // draft re-seeds the panel after a reload.
+    // draft re-seeds the panel after a reload. The first sync only establishes a
+    // baseline, so a freshly mounted panel never prunes cached comments before inserting.
+    const quoteBaselineRef = React.useRef(null);
     React.useEffect(function frSyncComposerQuotes() {
       if (!sessionId) return;
       const actions = inputActions;
@@ -1901,6 +1902,7 @@ function frCreateBody(api) {
       });
       const present = {};
       quoteTexts.forEach(function frMark(text) { present[text] = true; });
+      const baseline = quoteBaselineRef.current;
 
       // Adopt cards persisted in the draft that the panel has not seen yet.
       const known = {};
@@ -1912,12 +1914,15 @@ function frCreateBody(api) {
         if (parsed) adopted.push(parsed);
       });
 
-      // Cards removed in the composer drop their comments.
+      // Cards that disappeared since the previous sync drop their comments. On the
+      // first sync only the persisted set is a baseline (nothing can be "removed" yet).
       const nextComments = current.filter(function frKeepComment(comment) {
         const text = frQuoteTextForComment(comment);
-        return text === '' || present[text];
+        if (text === '') return true;
+        if (present[text]) return true;
+        if (baseline === null || !baseline[text]) return true;
+        return false;
       }).concat(adopted);
-      if (nextComments.length !== current.length) setComments(nextComments);
 
       // Comments with no card yet get one (appended at the composer caret/end).
       const missing = nextComments.filter(function frMissing(comment) {
@@ -1929,24 +1934,10 @@ function frCreateBody(api) {
         if (!text) return;
         try { actions.insertQuote(text); } catch (err) { /* composer not ready */ }
       });
-    }, [sessionId, inputQuotes, inputActions, setComments]);
 
-    // Adopt comments cleared from elsewhere (the composer bridge clears them after a
-    // send) and republish this tab's comments so the bridge always sees the latest set.
-    React.useEffect(function frCommentBusLifecycle() {
-      if (!sessionId) return undefined;
-      const unsubscribe = frSubscribeComments(sessionId, function frExternalComments(next) {
-        const current = Array.isArray(commentsRef.current) ? commentsRef.current : [];
-        const value = Array.isArray(next) ? next : [];
-        if (value.length === current.length && value.every(function frSameId(comment, index) {
-          return comment && current[index] && comment.id === current[index].id;
-        })) return;
-        commentsRef.current = value;
-        setCommentsState(value);
-      });
-      frPublishComments(sessionId, Array.isArray(commentsRef.current) ? commentsRef.current : []);
-      return unsubscribe;
-    }, [sessionId]);
+      if (nextComments.length !== current.length) setComments(nextComments);
+      quoteBaselineRef.current = present;
+    }, [sessionId, inputQuotes, inputActions, setComments]);
 
     const setOpenPath = React.useCallback(function frSetOpenPath(nextPath) {
       const value = typeof nextPath === 'string' && nextPath ? nextPath : null;
