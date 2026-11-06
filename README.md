@@ -32,7 +32,9 @@ context marks, so browsing changes and writing comments stay out of each other's
 
 - **Right-sidebar entry** — a guide card in the Harness right sidebar; no separate window,
   no custom panel chrome. The tab framework, theme tokens and locale are the harness's own.
-  The card shows the default shortcut **Cmd/Ctrl+Alt+R** (rebindable in Settings → Shortcuts).
+  The card shows the default shortcut **Cmd/Ctrl+Alt+R** on desktop (`Cmd/Ctrl+Alt+K` on web,
+  where the +R chord is already taken by the page-refresh command); rebindable in
+  Settings → Shortcuts.
 - **Recursive fuzzy search** — type any part of a name: `changesitems` finds
   `changes_items.tsx`; separators and missing characters do not matter. Results are ranked
   by match quality and grouped by folder. Skips `.git`/`.svn`/`.hg`/`node_modules`.

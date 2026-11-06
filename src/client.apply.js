@@ -221,7 +221,6 @@
     const inject = [
       'slots',
       'locale',
-      'shortcuts',
       'sidebarRightTabs',
       'sidebarRight',
       'remote',
@@ -243,41 +242,6 @@
 
       ctx.effect(() => ctx.sidebarRightTabs.register(frTabDefinition(t)), 'file-review: tab type')
 
-
-      // Default shortcut: Cmd/Ctrl + Alt + R (R for review). It is deliberately not a
-      // common app/browser chord; users can rebind it in Settings → Shortcuts.
-      ctx.inject(['shortcuts'], (scope) => {
-        scope.effect(
-          () =>
-            scope.shortcuts.register({
-              id: 'file-review.open',
-              label: () => t('shortcut.label'),
-              aliases: ['file review', 'review comments', '文件评审'],
-              defaults: {
-                'desktop:macos': { code: 'KeyR', modifiers: ['primary', 'alt'] },
-                'desktop:windows': { code: 'KeyR', modifiers: ['primary', 'alt'] },
-                'desktop:linux': { code: 'KeyR', modifiers: ['primary', 'alt'] },
-                'web:macos': { code: 'KeyR', modifiers: ['primary', 'alt'] },
-                'web:windows': { code: 'KeyR', modifiers: ['primary', 'alt'] },
-              },
-              regions: ['page', 'editable', 'terminal'],
-              modals: [],
-              resolve: ({ target: element }) => {
-                const target = ctx.sidebarRight.commandTarget(element)
-                if (target === undefined) {
-                  return { status: 'blocked', reason: t('shortcut.noSession') }
-                }
-                return {
-                  status: 'handled',
-                  run: () => {
-                    ctx.sidebarRight.openTabFromTarget('file-review', target)
-                  },
-                }
-              },
-            }),
-          'file-review: open shortcut',
-        )
-      })
 
       const api = {
         list: (sessionId, absolutePath, signal) =>
@@ -345,6 +309,51 @@
           tag.remove()
         }
       }, 'file-review: stylesheet')
+
+      // Default shortcut. Desktop: Cmd/Ctrl+Alt+R (review). Web must differ: the shipped
+      // `page.refresh` command already owns primary+alt+R there, and the shortcut service
+      // rejects a command whose defaults conflict in ANY declared profile, which would make
+      // registration throw. Web therefore uses primary+alt+K. Registration is also guarded
+      // so a future conflict can never break plugin activation.
+      ctx.inject(['shortcuts'], (scope) => {
+        scope.effect(
+          () => {
+            try {
+              return scope.shortcuts.register({
+                id: 'file-review.open',
+                label: () => t('shortcut.label'),
+                aliases: ['file review', 'review comments'],
+                defaults: {
+                  'desktop:macos': { code: 'KeyR', modifiers: ['primary', 'alt'] },
+                  'desktop:windows': { code: 'KeyR', modifiers: ['primary', 'alt'] },
+                  'desktop:linux': { code: 'KeyR', modifiers: ['primary', 'alt'] },
+                  'web:macos': { code: 'KeyK', modifiers: ['primary', 'alt'] },
+                  'web:windows': { code: 'KeyK', modifiers: ['primary', 'alt'] },
+                },
+                regions: ['page', 'editable', 'terminal'],
+                modals: [],
+                resolve: ({ target: element }) => {
+                  const target = ctx.sidebarRight.commandTarget(element)
+                  if (target === undefined) {
+                    return { status: 'blocked', reason: t('shortcut.noSession') }
+                  }
+                  return {
+                    status: 'handled',
+                    run: () => {
+                      ctx.sidebarRight.openTabFromTarget('file-review', target)
+                    },
+                  }
+                },
+              })
+            } catch (error) {
+              // A conflicting or reserved default must not take the whole plugin down.
+              return () => {}
+            }
+          },
+          'file-review: open shortcut',
+        )
+      })
+
     }
 
     /**
