@@ -249,6 +249,24 @@
         'file-review: tab body',
       )
 
+      // Invisible bridge above the composer: while review comments are pending, a normal
+      // send appends them below the user's text (blank line separated) and submits.
+      ctx.effect(
+        () =>
+          ctx.slots.inject('conversation.input.dock', () =>
+            ctx.slots.register(
+              {
+                name: 'conversation.input.dock',
+                id: 'file-review-comment-bridge',
+                order: 90,
+                locale: FR_NS,
+              },
+              FrCommentBridge,
+            ),
+          ),
+        'file-review: composer bridge',
+      )
+
       ctx.effect(
         () =>
           ctx.slots.inject('sidebar.right.pane.tab.title', () =>

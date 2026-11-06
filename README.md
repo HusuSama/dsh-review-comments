@@ -47,9 +47,11 @@ context marks, so browsing changes and writing comments stay out of each other's
 - **Line comments** — double-click a line, or drag across lines to select a range, then
   type in the composer that opens below the selection. `Enter` turns it into an inline
   card; `Shift+Enter` adds a newline; `Esc` cancels.
-- **Send all comments to the model** — `Ctrl/Cmd+Enter` (or the send button) writes the
-  formatted list into the chat composer and submits it, exactly like pressing Enter there.
-  Existing draft text is preserved.
+- **Send comments to the model** — `Ctrl/Cmd+Enter` in the comment box or the panel's send
+  button submits the formatted list. Comments that are still pending are also **appended to
+  any ordinary chat submit**: type your own message, press Enter (or Cmd/Ctrl+Enter / the
+  Send button) in the chat composer, and the message goes out as your text, one blank line,
+  then the comment list — the comment cards stay in the panel until that send is accepted.
 - **Light/dark and zh/en** — colors come from `--dsw-alias-*` theme tokens; the UI ships
   Simplified Chinese and English dictionaries.
 
@@ -115,7 +117,8 @@ guide.
 | Drag across lines | file view | select a line range; composer opens below the selection; the range stays highlighted while you type |
 | `Enter` | composer | add the comment card at that place |
 | `Shift+Enter` | composer | newline inside the comment |
-| `Ctrl/Cmd+Enter` | composer / header send button | send all comments to the model |
+| `Ctrl/Cmd+Enter` | comment box / header send button | send all pending comments to the model |
+| Enter / Cmd+Enter / Send | chat composer | if comments are pending: your text, one blank line, then the comment list — sent as one message |
 | `Esc` | composer | cancel |
 | Delete button on a card | comment card | remove that comment |
 
