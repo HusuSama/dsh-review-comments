@@ -3,7 +3,7 @@
 [English](README.md) | 中文
 
 DeepSeek Harness Web UI 的**文件评审评论**插件。它常驻右侧栏：浏览与模糊搜索工作区、带语法高亮和
-Git 变更标记地阅读文件、对某一行或一个行区间写评论，然后用一个快捷键把所有评论以紧凑的
+Git 变更标记地阅读文件、对某一行或一个行区间写评论，再把收集到的评论以紧凑的
 `路径#行号` 有序列表发给模型。
 
 > 在 Harness 界面中的入口是右侧栏指南页里的 **文件评审** 卡片（英文：File Review）。
@@ -22,8 +22,7 @@ Git 变更只作为上下文标记展示，浏览变更与写评论互不干扰�
 ## 功能
 
 - **右侧栏入口** —— Harness 右侧栏指南页中的一张卡片；没有独立窗口或自绘面板外壳，tab 体系、
-  主题 token 与多语言都复用 Harness 自身。卡片上显示默认快捷键 **Cmd/Ctrl+Alt+R**（Web 端为 **Cmd/Ctrl+Alt+K**，
-  因为 +R 组合已被页面刷新命令占用；可在 设置 → 快捷键 里重新绑定）。
+  主题 token 与多语言都复用 Harness 自身。
 - **递归模糊搜索** —— 输入名字的任意片段即可：`changesitems` 能找到 `changes_items.tsx`，
   分隔符与跳字都不影响匹配；结果按匹配度排序并按目录分组。自动跳过
   `.git`/`.svn`/`.hg`/`node_modules`。
@@ -39,8 +38,9 @@ Git 变更只作为上下文标记展示，浏览变更与写评论互不干扰�
 - **评论间跳转** —— 文件头部显示当前位置（如 `2/7`），并有上一条/下一条按钮；
   `Ctrl/Cmd+↑/↓`、`Ctrl/Cmd+P/N`、`Ctrl/Cmd+滚轮` 也可以切换。文件树右侧显示每个文件的评论数，
   文件夹显示其下所有文件评论数的合计（评论数以主题强调色的加粗标签显示，风格与输入框发送按钮一致）；
-  文件列表底部始终显示总数；目录头部和底部提供带文字的「删除全部评论」按钮，文件头部只删除当前文件
-  的评论、副标题也只显示当前文件的评论数；搜索结果与「仅看变更」列表也会带同样的评论数标签。
+  文件列表底部始终显示总数；目录头部提供带文字的「删除全部评论」按钮（底部统计栏有同功能的图标按钮），
+  文件头部只删除当前文件的评论、副标题也只显示当前文件的评论数；搜索结果与「仅看变更」列表也会带同样
+  的评论数标签。
 - **发送给模型** —— 评论框里的 `Ctrl/Cmd+Enter` 或面板上的发送按钮会把格式化后的评论列表提交给模型；
   另外，**未发送的评论会自动附加到普通聊天发送**：在聊天框输入你自己的内容后按 Enter（或
   Cmd/Ctrl+Enter / 发送按钮），消息内容为「你的文字 + 空行 + 评论清单」，评论卡片会保留到这次发送被接受。
@@ -73,8 +73,8 @@ dsh plugin --profile web add github:HusuSama/dsh-review-comments
 dsh plugin --profile web add link:/absolute/path/to/dsh-review-comments
 ```
 
-然后在 **设置 → 插件** 里启用 **File Comments** bundle（命令行只添加依赖；插件管理页安装会自动选中
-bundle）。无需重启应用：浏览器半侧热替换，Host 半侧随 bundle 一起启动。
+然后在 **设置 → 插件** 里启用 **文件评审 · 评论**（英文界面显示 **File Comments**）bundle
+（命令行只添加依赖；插件管理页安装会自动选中 bundle）。无需重启应用：浏览器半侧热替换，Host 半侧随 bundle 一起启动。
 
 本插件**只通过这个 GitHub 仓库分发**，没有发布 npm 包；请始终使用上面的 `github:` 形式安装
 （或通过插件管理页的 Git 源安装）。
@@ -93,6 +93,7 @@ dsh plugin --profile web add link:"$PWD"
 
 打开右侧栏（会话标题栏右侧的展开按钮）→ 指南页 → **文件评审** 卡片。点卡片（或点 tab 栏的
 新增按钮选这张卡片）即可打开文件管理。若右侧栏已经展开，先关掉别的 tab 再走指南页。
+面板**没有全局打开快捷键**，入口就是这张指南卡片。
 
 | 操作 | 位置 | 效果 |
 | --- | --- | --- |
@@ -106,6 +107,11 @@ dsh plugin --profile web add link:"$PWD"
 | `Shift+Enter` | 评论输入框 | 评论内换行 |
 | `Ctrl/Cmd+Enter` | 评论输入框 / 顶部发送按钮 | 把所有待发送评论发给模型 |
 | Enter / Cmd+Enter / 发送按钮 | 聊天输入框 | 若有待发送评论：你的文字 + 空行 + 评论清单，合并为一条消息发出 |
+| 上一条 / 下一条 | 文件头部 | 在该文件的评论之间跳转（显示 `2/7` 位置） |
+| `Ctrl/Cmd+↑/↓`、`Ctrl/Cmd+P/N`、`Ctrl/Cmd+滚轮` | 文件内容 | 在该文件的评论之间跳转 |
+| 评论数 | 文件树 / 底部 | 文件显示自身评论数、目录显示子树合计，列表底部显示总数 |
+| 删除全部评论 | 文件列表头部 / 底部 | 清空所有待发送评论 |
+| 删除本文件评论 | 文件头部 | 只清空当前文件的评论 |
 | `Esc` | 评论输入框 | 取消 |
 | 卡片上的删除按钮 | 评论卡片 | 删除该条评论 |
 
@@ -160,7 +166,8 @@ Windows 为 `C:\\Users\\Public\\dsh-review-comments`）下的每会话 JSON；
   （`ctx.sidebarRightTabs.register`）与 `sidebar.right.pane.tab` 槽位组件，通过
   `remote.workspaceFiles` 读取工作区文件并轮询上面的状态文件。
 - 发送复用输入框自己的 `inputActions.setDraft()/submit()`，也就是聊天框按 Enter 的同一条路径；
-  插件本身不往会话日志里写任何东西。
+  输入框上方有一个不可见的 bridge，会在普通发送时把待发送评论拼在文字后面（你的文字 + 空行 + 评论
+  清单）。插件本身不往会话日志里写任何东西。
 - 所有视觉都使用 `--dsw-alias-*` 主题 token（`link`、`bg-document-selection`、
   `interactive-bg-hover-accent`、`elevation-panel` 等），因此明暗主题与皮肤自动适配。
 
@@ -174,15 +181,16 @@ Windows 为 `C:\\Users\\Public\\dsh-review-comments`）下的每会话 JSON；
 | `THIRD_PARTY_NOTICES.md` | 第三方许可证文本 |
 | `src/client.ui.js` | React UI（无 JSX）：文件树、搜索、文件视图、评论输入框/卡片、CSS |
 | `src/client.apply.js` | 注册：语言词条、tab 类型、槽位组件、样式表 |
-| `build.mjs` | 把三个源文件拼成 `client.js`（不要手改 `client.js`） |
-| `tests/core.test.mjs` | Node 内置测试运行器，152 条用例 |
+| `build.mjs` | 把内置的 Prism 与三个源文件拼成 `client.js`（不要手改 `client.js`） |
+| `tests/core.test.mjs` | Node 内置测试运行器，137 条用例 |
 | `locale/*.json`、`icon.svg` | 插件展示元数据 |
+| `docs/media/demo.gif` | 上方演示动图 |
 
 ### 开发
 
 ```bash
 node build.mjs                # 重新生成 client.js
-node --test tests/core.test.mjs   # 152 条单测
+node --test tests/core.test.mjs   # 137 条单测
 node --check client.js        # 语法检查
 ```
 

@@ -4,8 +4,8 @@ English | [中文](README.zh.md)
 
 A **file review comments** plugin for the DeepSeek Harness Web UI. It lives in the right
 sidebar: browse and fuzzy-search the workspace, read files with syntax highlighting and
-git status, comment on a line or a line range, then send every comment to the model in
-one shortcut as a compact `path#line` ordered list.
+git status, comment on a line or a line range, then hand the collected comments to the
+model as a compact `path#line` ordered list.
 
 > In the Harness UI the entry is the **File Review** guide card (中文：文件评审).
 
@@ -25,7 +25,6 @@ context marks, so browsing changes and writing comments stay out of each other's
 
 - **Right-sidebar entry** — a guide card in the Harness right sidebar; no separate window,
   no custom panel chrome. The tab framework, theme tokens and locale are the harness's own.
- 
 - **Recursive fuzzy search** — type any part of a name: `changesitems` finds
   `changes_items.tsx`; separators and missing characters do not matter. Results are ranked
   by match quality and grouped by folder. Skips `.git`/`.svn`/`.hg`/`node_modules`.
@@ -46,9 +45,10 @@ context marks, so browsing changes and writing comments stay out of each other's
   The tree shows a right-aligned comment count per file and, for folders, the aggregate of
   everything below them (rendered as a bold count tag on the theme accent colour, like the
   composer's send button); the browser footer always shows the workspace total. The browser
-  header/footer offer a labelled **Delete all comments** button, while the file header
-  deletes only that file's comments and its subtitle shows that file's count. Search results
-  and the changed-files list carry the same count tags.
+  header has a labelled **Delete all comments** button (the footer carries the same action as
+  a compact icon button), while the file header deletes only that file's comments and its
+  subtitle shows that file's count. Search results and the changed-files list carry the same
+  count tags.
 - **Send comments to the model** — `Ctrl/Cmd+Enter` in the comment box or the panel's send
   button submits the formatted list. Comments that are still pending are also **appended to
   any ordinary chat submit**: type your own message, press Enter (or Cmd/Ctrl+Enter / the
@@ -107,7 +107,8 @@ dsh plugin --profile web add link:"$PWD"
 Open the right sidebar (the expand button in the conversation header) → the guide page
 shows the **File Review** card. Click it (or use the tab strip's add control → the card) to
 open the file manager. If the sidebar is already expanded, close another tab and use the
-guide.
+guide. There is no global keyboard shortcut for opening the panel; the guide card is the
+entry point.
 
 | Action | Where | Result |
 | --- | --- | --- |
@@ -121,6 +122,11 @@ guide.
 | `Shift+Enter` | composer | newline inside the comment |
 | `Ctrl/Cmd+Enter` | comment box / header send button | send all pending comments to the model |
 | Enter / Cmd+Enter / Send | chat composer | if comments are pending: your text, one blank line, then the comment list — sent as one message |
+| Previous / Next | file header | jump between this file's comments (position `2/7` shown) |
+| `Ctrl/Cmd+Up/Down`, `Ctrl/Cmd+P/N`, `Ctrl/Cmd+wheel` | file view | jump between this file's comments |
+| Comment counts | file tree / footer | per-file count tags, per-folder subtree totals, workspace total in the footer |
+| Delete all comments | file list header / footer | clear every pending comment |
+| Delete comments in this file | file header | clear only the open file's comments |
 | `Esc` | composer | cancel |
 | Delete button on a card | comment card | remove that comment |
 
@@ -180,7 +186,9 @@ The search box is recursive and fuzzy:
   (`ctx.sidebarRightTabs.register`) plus its body in the `sidebar.right.pane.tab` slot, reads
   workspace files through `remote.workspaceFiles`, and polls the status file above.
 - Sending reuses the composer's own `inputActions.setDraft()/submit()`, i.e. the same path as
-  pressing Enter in the chat box. Nothing is written to the session log by the plugin itself.
+  pressing Enter in the chat box. An invisible bridge above the composer appends the pending
+  comments to an ordinary send (your text, blank line, then the list). Nothing is written to
+  the session log by the plugin itself.
 - Everything visual uses `--dsw-alias-*` theme tokens (`link`, `bg-document-selection`,
   `interactive-bg-hover-accent`, `elevation-panel`, …), so light/dark and themes come for free.
 
@@ -194,15 +202,16 @@ The search box is recursive and fuzzy:
 | `THIRD_PARTY_NOTICES.md` | third-party license texts |
 | `src/client.ui.js` | React UI (no JSX): file tree, search, file view, comment popover/cards, CSS |
 | `src/client.apply.js` | registrations: locale dictionaries, tab type, body slot, stylesheet |
-| `build.mjs` | concatenates the three sources into `client.js` (do not edit `client.js`) |
-| `tests/core.test.mjs` | Node built-in test runner, 152 tests |
+| `build.mjs` | concatenates the vendored Prism bundle and the three sources into `client.js` (do not edit `client.js`) |
+| `tests/core.test.mjs` | Node built-in test runner, 137 tests |
 | `locale/*.json`, `icon.svg` | plugin display metadata |
+| `docs/media/demo.gif` | the demo animation shown above |
 
 ### Development
 
 ```bash
 node build.mjs                # regenerate client.js
-node --test tests/core.test.mjs   # 152 unit tests
+node --test tests/core.test.mjs   # 137 unit tests
 node --check client.js        # syntax check
 ```
 
