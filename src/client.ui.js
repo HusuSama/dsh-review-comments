@@ -108,8 +108,9 @@ const FR_CSS = `
 .dfr-search-status{padding:5px 8px;font-size:11px;line-height:15px;color:var(--dsw-alias-label-secondary);white-space:normal;overflow-wrap:anywhere}
 .dfr-search-row{width:100%}
 .dfr-search-empty{padding:8px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}
-.dfr-comment-count{flex:none;box-sizing:border-box;width:34px;margin-left:4px;padding:0 5px;text-align:center;font-size:11px;line-height:16px;font-weight:700;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:999px;font-variant-numeric:tabular-nums;overflow:hidden}
+.dfr-comment-count{flex:none;box-sizing:border-box;width:34px;margin-left:4px;padding:0 5px;text-align:center;font-size:11px;line-height:16px;font-weight:700;color:var(--dsw-alias-label-primary-foreground);background:var(--dsw-alias-button-info-fill);border:1px solid var(--dsw-alias-button-info-fill);border-radius:999px;font-variant-numeric:tabular-nums;overflow:hidden}
 .dfr-comment-count.is-empty{background:transparent;border-color:transparent;color:var(--dsw-alias-label-secondary)}
+.dfr-text-btn{padding:3px 6px;gap:4px;font-size:10px;line-height:14px;white-space:nowrap}
 .dfr-comment-nav{color:var(--dsw-alias-label-secondary)}
 .dfr-comment-nav-count{flex:none;min-width:34px;text-align:center;font-size:10px;line-height:14px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}
 @media (max-width:340px){.dfr-header{padding:5px 6px}.dfr-line-no{width:36px}.dfr-btn{padding:3px 5px}.dfr-tree-row{padding-right:6px}.dfr-popover,.dfr-card{margin-left:4px;margin-right:4px}}
@@ -708,6 +709,19 @@ function frIcon(name, size) {
     strokeLinecap: 'round',
     strokeLinejoin: 'round',
   }));
+}
+
+/** A compact button with an icon and its visible label (used by header actions). */
+function frTextButton(label, name, onClick, options) {
+  const settings = options && typeof options === 'object' ? options : {};
+  return h('button', {
+    type: 'button',
+    className: 'dfr-btn dfr-btn-ghost dfr-text-btn' + (settings.className ? ' ' + settings.className : ''),
+    title: label,
+    'aria-label': label,
+    disabled: settings.disabled === true,
+    onClick: typeof onClick === 'function' ? onClick : undefined,
+  }, frIcon(name, 12), h('span', null, label));
 }
 
 function frIconButton(label, name, onClick, options) {
@@ -2507,7 +2521,7 @@ const setComments = React.useCallback(function frSetComments(next) {
         ),
         h('div', { className: 'dfr-header-actions' },
           gitToggleButton(),
-          frIconButton(tr('comment.deleteAll'), 'trash', function frDeleteAllClick() { deleteAllComments(); }, {
+          frTextButton(tr('comment.deleteAll'), 'trash', function frDeleteAllClick() { deleteAllComments(); }, {
             disabled: commentCount === 0,
             className: 'dfr-danger',
           }),
@@ -2576,8 +2590,8 @@ const setComments = React.useCallback(function frSetComments(next) {
     let fileSubtitle = '';
     if (activeRange && typeof activeRange === 'object') {
       fileSubtitle = frRangeLabel(activeRange.start, activeRange.end, tr);
-    } else if (commentCount > 0) {
-      fileSubtitle = tr('comment.count', { count: commentCount });
+    } else if (openComments.length > 0) {
+      fileSubtitle = tr('comment.count', { count: openComments.length });
     } else {
       fileSubtitle = tr('file.hint');
     }
@@ -2607,7 +2621,7 @@ const setComments = React.useCallback(function frSetComments(next) {
             disabled: navTotal === 0 || navIndex >= navTotal - 1,
             className: 'dfr-comment-nav',
           }),
-          frIconButton(tr('comment.deleteFile'), 'trash', function frDeleteAllFileClick() { deleteFileComments(); }, {
+          frTextButton(tr('comment.deleteFile'), 'trash', function frDeleteAllFileClick() { deleteFileComments(); }, {
             disabled: openComments.length === 0,
             className: 'dfr-danger',
           }),
