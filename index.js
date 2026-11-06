@@ -3,9 +3,9 @@
  *
  * The browser half cannot run processes, so this half polls `git status` and
  * `git diff` for every live Session's working directory and writes one compact
- * JSON file per Session under `.status/` next to this package. The browser half
- * reads that file through the ordinary workspace-files Remote (absolute file
- * reads are allowed) and paints the tree/file markers from it.
+ * JSON file per Session into a fixed OS-temp directory. The browser half reads
+ * that file through the ordinary workspace-files Remote (absolute file reads
+ * are allowed) and paints the tree/file markers from it.
  *
  * Nothing here is model-facing and nothing touches the Session log.
  */
@@ -14,9 +14,15 @@ import { mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-/** The directory the browser half was built to read (build.mjs embeds the same path). */
+/**
+ * Fixed OS-temp directory both halves agree on without knowing this package's
+ * install path: the browser half cannot call the host and cannot compute `here`.
+ * Unix uses /tmp; Windows falls back to the shared Public profile directory.
+ */
 const HERE = dirname(fileURLToPath(import.meta.url))
-const STATUS_DIR = join(HERE, '.status')
+const STATUS_DIR = process.platform === 'win32'
+  ? join(process.env.PUBLIC || 'C:\\Users\\Public', 'dsh-review-comments')
+  : '/tmp/dsh-review-comments'
 
 /** Host poll period; the browser half polls the files a little slower. */
 const POLL_MS = 2500
@@ -340,6 +346,8 @@ export function apply(ctx) {
       running = false
     }
   }
+
+
 
   ctx.effect(() => {
     const first = setTimeout(() => { void tick() }, 1200)

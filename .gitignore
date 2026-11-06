@@ -1,5 +1,4 @@
-# Runtime artifacts
-.status/
+# Dependency/build noise
 node_modules/
 
 # Internal design/verification notes (not part of the published plugin)

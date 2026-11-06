@@ -1474,13 +1474,15 @@ function frCreateBody(api) {
     // snapshot; non-repo/missing leaves git UI unavailable.
     React.useEffect(function frPollGitStatus() {
       if (!apiRead || !sessionId) return undefined;
-      const statusDir = typeof FR_STATUS_DIR === 'string' && FR_STATUS_DIR
-        ? FR_STATUS_DIR.replace(/[\\/]+$/, '')
-        : '';
-      if (!statusDir) return undefined;
+      // The Host writes status JSON into a fixed OS-temp directory (it cannot know
+      // this package's install path, and the browser cannot call the host directly).
+      const statusDirs = Array.isArray(FR_STATUS_DIRS)
+        ? FR_STATUS_DIRS.filter(function frStatusDirOk(value) { return typeof value === 'string' && value; })
+            .map(function frStatusDirTrim(value) { return value.replace(/[\\/]+$/, ''); })
+        : [];
+      if (!statusDirs.length) return undefined;
       // The Host sanitizes the session id into a portable file name; mirror it.
       const safeSession = String(sessionId).replace(/[^A-Za-z0-9._-]/g, '_');
-      const statusPath = statusDir + '/' + safeSession + '.json';
       let stopped = false;
       let timer = null;
       let controller = null;
@@ -1493,7 +1495,7 @@ function frCreateBody(api) {
         controller = null;
       }
 
-      async function frReadStatusFile(signal) {
+      async function frReadStatusFile(statusPath, signal) {
         let offset = 1;
         let text = '';
         let pages = 0;
@@ -1538,7 +1540,11 @@ function frCreateBody(api) {
         controller = nextController;
         unlink = frLinkSignal(tabSignal, nextController);
         let raw = null;
-        try { raw = await frReadStatusFile(nextController.signal); } catch (err) { raw = null; }
+        for (let dirIndex = 0; dirIndex < statusDirs.length && !raw; dirIndex += 1) {
+          const statusPath = statusDirs[dirIndex] + '/' + safeSession + '.json';
+          try { raw = await frReadStatusFile(statusPath, nextController.signal); } catch (err) { raw = null; }
+          if (nextController.signal.aborted) break;
+        }
         const aborted = nextController.signal.aborted;
         frReleasePoll();
         if (stopped || aborted) return;

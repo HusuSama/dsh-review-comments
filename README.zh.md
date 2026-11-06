@@ -58,19 +58,25 @@ Git 变更只作为上下文标记展示，浏览变更与写评论互不干扰�
 ### 通过插件管理页（推荐）
 
 1. 打开 **设置 → 插件**。
-2. 安装 `dsh-review-comments`（填包名，或选择本地 checkout 目录）。
+2. 从仓库安装：填入 `https://github.com/HusuSama/dsh-review-comments`（插件管理支持 Git 源），
+   或选择本地 checkout 目录。npm 包名只有在发布到 npm 之后才可用。
 3. bundle 会自动启用，浏览器半侧热加载进当前页面。
 
 ### 通过命令行
 
 ```bash
-dsh plugin --profile web add dsh-review-comments
-# 用本地 checkout 而不是 registry：
+# 当前仓库（尚未发 npm）——pnpm 从 GitHub 安装
+dsh plugin --profile web add github:HusuSama/dsh-review-comments
+
+# 或者本地 checkout（开发用）：
 dsh plugin --profile web add link:/absolute/path/to/dsh-review-comments
+
+# npm 形式——只有在发布了 npm 包之后才可用：
+dsh plugin --profile web add dsh-review-comments
 ```
 
-然后在 **设置 → 插件** 里启用 **File Comments** bundle。无需重启应用：浏览器半侧热替换，
-Host 半侧随 bundle 一起启动。
+然后在 **设置 → 插件** 里启用 **File Comments** bundle（命令行只添加依赖；插件管理页安装会自动选中
+bundle）。无需重启应用：浏览器半侧热替换，Host 半侧随 bundle 一起启动。
 
 ### 从源码安装
 
@@ -120,7 +126,8 @@ dsh plugin --profile web add link:"$PWD"
 
 ### Git 状态
 
-Host 半侧每 2.5 秒扫描一次会话工作目录，把结果写成包内 `.status/` 目录下的每会话 JSON；
+Host 半侧每 2.5 秒扫描一次会话工作目录，把结果写成系统临时目录（`/tmp/dsh-review-comments`，
+Windows 为 `C:\\Users\\Public\\dsh-review-comments`）下的每会话 JSON；
 浏览器半侧通过 Harness 普通的文件 Remote 读取它。
 
 - 文件树：新增/未跟踪绿色、修改/重命名蓝色、删除红色（删除线）、冲突橙色；含变更的目录有提示；
@@ -145,7 +152,8 @@ Host 半侧每 2.5 秒扫描一次会话工作目录，把结果写成包内 `.s
 
 - `index.js` —— Host 半侧：用 Harness 的 `sessions` + `workingDirectory` 服务找到每个活跃会话的
   项目目录，通过 `child_process` 调用 `git rev-parse/status/diff`，把结果原子写入
-  `.status/<sessionId>.json`（内容不变不重写）。
+  系统临时目录（`/tmp/dsh-review-comments`，Windows 为 `C:\\Users\\Public\\dsh-review-comments`）下的
+  `<sessionId>.json`（内容不变不重写）。
 - `client.js`（由 `build.mjs` 生成）—— 浏览器半侧：注册右侧栏 tab 类型
   （`ctx.sidebarRightTabs.register`）与 `sidebar.right.pane.tab` 槽位组件，通过
   `remote.workspaceFiles` 读取工作区文件并轮询上面的状态文件。

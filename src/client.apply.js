@@ -195,6 +195,7 @@
     function apply(ctx) {
       const t = ctx.locale.bind(FR_NS)
 
+
       ctx.effect(
         () => ctx.locale.register(FR_NS, { zh: FR_ZH, en: FR_EN }),
         'file-review: dictionaries',

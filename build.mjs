@@ -15,8 +15,12 @@ import { fileURLToPath } from 'node:url'
 const here = dirname(fileURLToPath(import.meta.url))
 const ID = 'dsh-review-comments'
 const PARTS = ['src/client.core.js', 'src/client.ui.js', 'src/client.apply.js']
-/** Host half writes its per-Session git status JSON here; the Client reads the same path. */
-const STATUS_DIR = join(here, '.status')
+/**
+ * Fixed OS-temp locations the Host writes git status JSON into and the browser half
+ * reads back. Both halves must agree without knowing the package's install path, so
+ * these are plain absolute paths instead of a build-time `here` path.
+ */
+const STATUS_DIRS = ['/tmp/dsh-review-comments', 'C:/Users/Public/dsh-review-comments']
 
 const body = PARTS.map((part) => {
   const source = readFileSync(join(here, part), 'utf8')
@@ -32,7 +36,7 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react')
     const h = React.createElement
-    const FR_STATUS_DIR = ${JSON.stringify(STATUS_DIR)}
+    const FR_STATUS_DIRS = ${JSON.stringify(STATUS_DIRS)}
 
 ${body}
 
