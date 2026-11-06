@@ -919,22 +919,23 @@ const FR_CSS = `
 .dfr-filter-input:focus{outline:none;border-color:var(--dsw-alias-link)}
 .dfr-btn:focus-visible,.dfr-filter-input:focus,.dfr-popover-textarea:focus{outline-color:var(--dsw-alias-link);border-color:var(--dsw-alias-link)}
 .dfr-filter-input::placeholder{color:var(--dsw-alias-label-secondary)}
-.dfr-tree{flex:1 1 auto;min-height:0;overflow:auto;padding:2px 0}
-.dfr-tree-row{display:flex;align-items:center;gap:4px;box-sizing:border-box;width:100%;text-align:left;background:transparent;border:0;font:inherit;font-size:12px;line-height:20px;padding:0 8px;color:var(--dsw-alias-label-primary);cursor:pointer;white-space:nowrap;min-width:0}
+.dfr-tree{flex:1 1 auto;min-height:0;overflow:auto;padding:4px 0}
+.dfr-tree-row{display:flex;align-items:center;gap:6px;box-sizing:border-box;width:100%;text-align:left;background:transparent;border:0;font:inherit;font-size:12px;line-height:18px;padding:5px 10px;border-radius:var(--dsw-radius-md);color:var(--dsw-alias-label-primary);cursor:pointer;white-space:nowrap;min-width:0}
 .dfr-tree-row:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
-.dfr-tree-row-dir{font-weight:500}
+.dfr-tree-row-dir{font-weight:400}
 .dfr-tree-row-file{color:var(--dsw-alias-label-primary)}
 .dfr-tree-row-other{color:var(--dsw-alias-label-secondary);cursor:default}
 .dfr-tree-row-other:hover{background:transparent}
-.dfr-tree-chevron{display:flex;flex:none;align-items:center;justify-content:center;width:12px;height:12px;color:var(--dsw-alias-label-secondary);transition:transform .12s ease}
+.dfr-tree-chevron{display:flex;flex:none;align-items:center;justify-content:center;width:16px;height:16px;color:var(--dsw-alias-label-secondary);transition:transform .12s ease}
 .dfr-tree-chevron-open{transform:rotate(90deg)}
-.dfr-tree-chevron-spacer{display:block;width:12px;height:12px}
+.dfr-tree-chevron-spacer{display:block;width:16px;height:16px}
+.dfr-tree-icon{display:flex;flex:none;align-items:center;justify-content:center;width:16px;height:16px;color:var(--dsw-alias-label-tertiary)}
 .dfr-tree-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .dfr-tree-badge{flex:none;font-size:10px;line-height:14px;padding:0 5px;border-radius:7px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary)}
-.dfr-status{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:2px 8px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}
+.dfr-status{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:3px 10px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
 .dfr-status-error{color:var(--dsw-alias-state-error-primary)}
 .dfr-error-detail{opacity:.85}
-.dfr-empty{padding:8px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}
+.dfr-empty{padding:6px 10px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
 .dfr-error-box{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:10px 8px;font-size:11px;line-height:16px;color:var(--dsw-alias-state-error-primary)}
 .dfr-footer{flex:none;display:flex;align-items:center;gap:6px;padding:6px 8px;border-top:1px solid var(--dsw-alias-border-l1)}
 .dfr-footer-count{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--dsw-alias-label-secondary)}
@@ -998,7 +999,7 @@ const FR_CSS = `
 .dfr-git-mark.is-deleted{background:var(--dsw-alias-state-error-primary);align-self:flex-start;height:8px}
 .dfr-git-mark.is-conflicted{background:var(--dsw-alias-state-warn-primary)}
 .dfr-git-mark.dfr-git-spacer{background:transparent}
-.dfr-search-status{padding:5px 8px;font-size:11px;line-height:15px;color:var(--dsw-alias-label-secondary);white-space:normal;overflow-wrap:anywhere}
+.dfr-search-status{padding:5px 10px;font-size:12px;line-height:16px;color:var(--dsw-alias-label-secondary);white-space:normal;overflow-wrap:anywhere}
 .dfr-search-row{width:100%}
 .dfr-search-empty{padding:8px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}
 .dfr-comment-count{flex:none;box-sizing:border-box;width:34px;margin-left:4px;padding:0 5px;text-align:center;font-size:11px;line-height:16px;font-weight:700;color:var(--dsw-alias-label-primary-foreground);background:var(--dsw-alias-button-info-fill);border:1px solid var(--dsw-alias-button-info-fill);border-radius:999px;font-variant-numeric:tabular-nums;overflow:hidden}
@@ -1580,6 +1581,7 @@ const frIconPaths = {
   back: 'M10 3.5L5.5 8l4.5 4.5',
   up: 'M4 10l4-4 4 4',
   down: 'M4 6l4 4 4-4',
+  file: 'M4 1.8h5l3 3v9.4H4z M9 1.8v3h3',
   send: 'M2.8 8L14 2.8 8.6 14l-1.7-4.6z',
   trash: 'M3.5 4.5h9 M6.2 4.5V2.8h3.6v1.7 M4.6 4.5l.6 8h4.6l.6-8',
 };
@@ -3189,7 +3191,7 @@ const setComments = React.useCallback(function frSetComments(next) {
     function frRenderTreeRow(row) {
       if (!row || typeof row !== 'object') return null;
       const depth = typeof row.depth === 'number' && isFinite(row.depth) ? Math.max(0, Math.min(Math.floor(row.depth), 30)) : 0;
-      const indent = 8 + depth * 12;
+      const indent = 10 + depth * 18;
       if (row.kind === 'status') {
         const key = 'status-' + String(row.path || '') + '-' + String(row.status || '') + '-' + String(depth);
         if (row.status === 'error') {
@@ -3246,7 +3248,7 @@ const setComments = React.useCallback(function frSetComments(next) {
           title: title,
           onClick: function frOpenFileClick() { openFile(rowPath); },
         },
-          spacer,
+          h('span', { className: 'dfr-tree-icon' }, frIcon('file', 14)),
           h('span', { className: 'dfr-tree-name' }, name),
           gitLetter ? h('span', { className: 'dfr-git-badge' }, gitLetter) : null,
           h('span', { className: 'dfr-comment-count' + (count > 0 ? '' : ' is-empty') }, count > 0 ? String(count) : '')
@@ -3326,6 +3328,7 @@ const setComments = React.useCallback(function frSetComments(next) {
               if (fileAbs) openFile(fileAbs);
             },
           },
+            h('span', { className: 'dfr-tree-icon' }, frIcon('file', 14)),
             h('span', { className: 'dfr-tree-name' }, filePath),
             letter ? h('span', { className: 'dfr-git-badge' }, letter) : null,
             h('span', { className: 'dfr-comment-count' + ((countsByPath && countsByPath[fileAbs] ? countsByPath[fileAbs] : 0) > 0 ? '' : ' is-empty') },
@@ -3375,6 +3378,7 @@ const setComments = React.useCallback(function frSetComments(next) {
         title: abs,
         onClick: function frOpenSearchResult() { openFile(abs); },
       },
+        h('span', { className: 'dfr-tree-icon' }, frIcon('file', 14)),
         h('span', { className: 'dfr-tree-name' }, rel),
         letter ? h('span', { className: 'dfr-git-badge' }, letter) : null,
         h('span', { className: 'dfr-comment-count' + (searchCount > 0 ? '' : ' is-empty') }, searchCount > 0 ? String(searchCount) : '')
