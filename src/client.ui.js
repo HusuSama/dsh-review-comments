@@ -1,4 +1,4 @@
-// dsh-file-review — client UI fragment (concatenated after src/client.core.js,
+// dsh-review-comments — client UI fragment (concatenated after src/client.core.js,
 // before src/client.apply.js, inside one factory closure that already declares
 // `React` and `h`). No imports, no JSX, no top-level side effects.
 

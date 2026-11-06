@@ -1,4 +1,4 @@
-/* dsh-file-review — pure core helpers (client.core.js).
+/* dsh-review-comments — pure core helpers (client.core.js).
  *
  * This file is a plain-script FRAGMENT: `node --check src/client.core.js` must pass on
  * its own. The build concatenates it into one factory closure together with

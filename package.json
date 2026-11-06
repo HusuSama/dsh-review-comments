@@ -4,7 +4,7 @@
   "description": "DeepSeek Harness right-sidebar file review: browse, search and preview workspace files, comment on lines or selections, and send every comment to the model as a path#line list.",
   "type": "module",
   "license": "MIT",
-  "author": "dsh-file-comments contributors",
+  "author": "HusuSama",
   "homepage": "https://github.com/HusuSama/dsh-review-comments#readme",
   "repository": {
     "type": "git",

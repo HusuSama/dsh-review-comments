@@ -22,13 +22,11 @@ one shortcut as a compact `path#line` ordered list.
 └───────────────┴─────────────────────────────────────────┘
 ```
 
-## Why not `dsh-file-review`?
+## Scope
 
-The npm name `dsh-file-review` is taken by another project that reviews file **changes**
-in native sidebar tabs. This plugin takes a different angle: you review full file content
-and anchor **comments** to lines or ranges; those comments are then handed to the model in
-a machine-friendly form. If you want diff-first review, use that project — the two can also
-be installed side by side.
+This plugin focuses on **comments**: read full file content, anchor a comment to a line or
+a line range, then hand the collected comments to the model. Git changes are shown as
+context marks, so browsing changes and writing comments stay out of each other's way.
 
 ## Features
 

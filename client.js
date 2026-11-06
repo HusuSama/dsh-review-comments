@@ -7,10 +7,10 @@ window.__ModuleLoader__.load({
   factory(require) {
     const React = require('react')
     const h = React.createElement
-    const FR_STATUS_DIR = "/Users/bytedance/.dsh/plugins/dsh-file-comments/.status"
+    const FR_STATUS_DIR = "/Users/bytedance/.dsh/plugins/dsh-review-comments/.status"
 
     /* ===== src/client.core.js ===== */
-/* dsh-file-review — pure core helpers (client.core.js).
+/* dsh-review-comments — pure core helpers (client.core.js).
  *
  * This file is a plain-script FRAGMENT: `node --check src/client.core.js` must pass on
  * its own. The build concatenates it into one factory closure together with
@@ -1306,7 +1306,7 @@ function frGroupSearchResults(results) {
 }
 
     /* ===== src/client.ui.js ===== */
-// dsh-file-review — client UI fragment (concatenated after src/client.core.js,
+// dsh-review-comments — client UI fragment (concatenated after src/client.core.js,
 // before src/client.apply.js, inside one factory closure that already declares
 // `React` and `h`). No imports, no JSX, no top-level side effects.
 
