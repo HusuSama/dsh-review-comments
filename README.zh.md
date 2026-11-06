@@ -8,18 +8,11 @@ Git 变更标记地阅读文件、对某一行或一个行区间写评论，然�
 
 > 在 Harness 界面中的入口是右侧栏指南页里的 **文件评审** 卡片（英文：File Review）。
 
-```
-┌───────────────┬─────────────────────────────────────────┐
-│  文件          │  src/utils/changesItems.tsx        M     │
-│  ─────────    │  1  import { parse } from './parse'     │
-│  src/         │  2  export function changesItems(...)   │
-│   utils/  ●   │  3    const items = list.map(toItem)    │
-│   app.tsx M   │  4    return items.filter(Boolean)      │
-│  README.md    │  ┌───────────────────────────────────┐  │
-│               │  │ L2-L4  评论：这里要处理空数组        │  │
-│               │  └───────────────────────────────────┘  │
-└───────────────┴─────────────────────────────────────────┘
-```
+## 演示
+
+![在 Harness 右侧栏浏览文件、查看 Git 标记、评论并发送](docs/media/demo.gif)
+
+完整画质录像：[docs/media/demo.mp4](docs/media/demo.mp4)（GitHub 会用自带视频播放器打开）。
 
 ## 定位
 

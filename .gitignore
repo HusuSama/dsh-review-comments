@@ -1,8 +1,9 @@
 # Dependency/build noise
 node_modules/
 
-# Internal design/verification notes (not part of the published plugin)
-docs/
+# Internal design/verification notes (not part of the public repo)
+docs/CONTRACT.md
+docs/VERIFY.md
 
 # Local noise
 *.log

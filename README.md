@@ -9,18 +9,12 @@ one shortcut as a compact `path#line` ordered list.
 
 > In the Harness UI the entry is the **File Review** guide card (中文：文件评审).
 
-```
-┌───────────────┬─────────────────────────────────────────┐
-│  Files        │  src/utils/changesItems.tsx        M     │
-│  ─────────    │  1  import { parse } from './parse'     │
-│  src/         │  2  export function changesItems(...)   │
-│   utils/  ●   │  3    const items = list.map(toItem)    │
-│   app.tsx M   │  4    return items.filter(Boolean)      │
-│  README.md    │  ┌───────────────────────────────────┐  │
-│               │  │ L2-L4  comment: 这里要处理空数组   │  │
-│               │  └───────────────────────────────────┘  │
-└───────────────┴─────────────────────────────────────────┘
-```
+## Demo
+
+![File review in the Harness right sidebar: browse, git marks, comment, send](docs/media/demo.gif)
+
+Full-quality recording: [docs/media/demo.mp4](docs/media/demo.mp4) (GitHub opens it in its
+own video player).
 
 ## Scope
 
