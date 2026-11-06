@@ -11,7 +11,9 @@ one shortcut as a compact `path#line` ordered list.
 
 ## Demo
 
-![File review in the Harness right sidebar: browse, git marks, comment, send](docs/media/demo.gif)
+<p align="center">
+  <a href="docs/media/demo.mp4"><img src="docs/media/demo.gif" alt="File review in the Harness right sidebar: browse, git marks, comment, send"></a>
+</p>
 
 Full-quality recording: [docs/media/demo.mp4](docs/media/demo.mp4) (GitHub opens it in its
 own video player).
